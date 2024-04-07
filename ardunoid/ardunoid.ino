@@ -11,6 +11,10 @@
 #define DC_PIN   9
 #define RST_PIN  8
 
+// Joystick pins
+#define JOY_X_PIN 0
+#define JOY_Y_PIN 1
+
 class Color {
   public:
     Color() {}
@@ -31,7 +35,12 @@ class ExtendedTFT: public TFT {
     ExtendedTFT(uint8_t CS, uint8_t RS, uint8_t RST)
       : TFT(CS, RS, RST) {}
   
-    moveCircle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t r, Color &_fill, Color &_stroke, Color& _bg) {
+    moveCircle(int16_t x0, int16_t y0, 
+               int16_t x1, int16_t y1, 
+               int16_t r, 
+               Color &_fill, 
+               Color &_stroke, 
+               Color &_bg) {
       uint16_t stroke = newColor(_stroke.r, _stroke.g, _stroke.b);
       uint16_t fill = newColor(_fill.r, _fill.g, _fill.b);
       uint16_t bg = newColor(_bg.r, _bg.g, _bg.b);
@@ -55,6 +64,25 @@ class ExtendedTFT: public TFT {
       fillCircle(x1, y1, r, fill);
       drawCircle(x1, y1, r, stroke);      
     }
+
+  moveRoundRect(int16_t x0, int16_t y0, 
+           int16_t x1, int16_t y1,
+           int16_t w, int16_t h,
+           int16_t r,
+           Color &_fill, 
+           Color &_stroke, 
+           Color &_bg) {
+      uint16_t stroke = newColor(_stroke.r, _stroke.g, _stroke.b);
+      uint16_t fill = newColor(_fill.r, _fill.g, _fill.b);
+      uint16_t bg = newColor(_bg.r, _bg.g, _bg.b);
+
+      // TO DO: optimize
+      fillRoundRect(x0, y0, w, h, r, bg);
+      drawRoundRect(x0, y0, w, h, r, bg);
+
+      fillRoundRect(x1, y1, w, h, r, fill);
+      drawRoundRect(x1, y1, w, h, r, stroke);
+  }
 };
 
 class Position {
@@ -106,7 +134,9 @@ class Gamefield {
               int numCols,
               int tftCSpin,
               int tftDCpin,
-              int tftRSTpin)
+              int tftRSTpin,
+              int joyXPin,
+              int joyYPin)
       : _width(width)
       , _height(height)
       , _brickRadius(brickRadius)
@@ -116,7 +146,8 @@ class Gamefield {
       , _padHalfWidth(padWidth/2)
       , _padHalfHeight(padHeight/2)
       , _ballPos(width/2, height*2/3)
-      , _padPos(width/2, height - _padHeight * 1.5)
+      , _padPos(width/2, height - padHeight * 2)
+      , _prevPadPos(width/2, height - padHeight * 2)
       , _ballSpeed(1, -2)
       , _backgroundColor(0, 0, 0)
       , _lineColor(255, 255, 255)
@@ -124,6 +155,8 @@ class Gamefield {
       , _padColor(255, 255, 0)
       , _screen(tftCSpin, tftDCpin, tftRSTpin)
       , _numBricks(numRows*numCols)
+      , _joyXPin(joyXPin)
+      , _joyYPin(joyYPin)
     {
       Color colors[] = {
         Color(255, 0, 0),
@@ -160,9 +193,8 @@ class Gamefield {
       _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
       _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
 
-      _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
-      _screen.rect(_padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, _padWidth, _padHeight);
-  
+      drawPad();
+
       for (int i = 0; i < _numBricks; i++) {
         Brick &brick = _bricks[i];
         _screen.fill(brick.color.r, brick.color.g, brick.color.b);
@@ -172,33 +204,52 @@ class Gamefield {
       }
     }
 
+    void drawPad() {
+      _screen.moveRoundRect(_prevPadPos.x-_padHalfWidth, _prevPadPos.y-_padHalfHeight, 
+                            _padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, 
+                            _padWidth, _padHeight,
+                            _padHeight / 2,
+                            _padColor,
+                            _lineColor,
+                            _backgroundColor);      
+
+      _prevPadPos = _padPos;
+    }
+
     void tick() {
-      Position newBallPos = _ballPos + _ballSpeed;
+      Position potentialBallPos = _ballPos + _ballSpeed;
+      readPadSpeed();
 
       // Calculate walls collisions first
-      if ((newBallPos.x + _ballRadius >= _width) || (newBallPos.x - _ballRadius <= 0))
+      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0))
         _ballSpeed.x = -_ballSpeed.x;
 
-      if (newBallPos.y - _ballRadius <= 0)
+      if (potentialBallPos.y - _ballRadius <= 0)
         _ballSpeed.y = -_ballSpeed.y;
 
       // Then brick collisions
       for (int i = 0; i < _numBricks; i++) {
-        checkBrickCollision(_bricks[i], newBallPos);                
+        checkBrickCollision(_bricks[i], potentialBallPos);                
       }
 
       // Then pad collision
       checkPadCollision();
 
       // Check ball flew out of the bottom
-      if (newBallPos.y - _ballRadius >= _height) {
+      if (potentialBallPos.y - _ballRadius >= _height) {
         // TODO: decrement pads, wait for click
 
         _ballSpeed = Position(0, -2);
         moveBall(Position(_width/2, _height*2/3));
       }
 
-      moveBall(_ballPos + _ballSpeed);      
+      moveBall(_ballPos + _ballSpeed);
+      movePad(_padPos + _padSpeed);
+    }
+
+    void readPadSpeed() {
+        int joyX = analogRead(_joyXPin);
+        _padSpeed.x = map(joyX, 0, 1023, -4, 5);
     }
 
     void moveBall(Position newPos) {
@@ -209,6 +260,13 @@ class Gamefield {
                          _ballPos.x, _ballPos.y, 
                          _ballRadius, _ballColor, _lineColor, _backgroundColor);
 
+    }
+
+    void movePad(Position newPos) {
+      if (newPos.x - _padHalfWidth >= 0 && newPos.x + _padHalfWidth < _width)
+        _padPos = newPos;
+
+      drawPad();    
     }
 
     void checkBrickCollision(Brick &brick, Position &ballPos) {
@@ -246,6 +304,7 @@ class Gamefield {
       if (_ballPos.x >= _padPos.x-_padHalfWidth &&
           _ballPos.x <= _padPos.x+_padHalfWidth) {
         _ballSpeed.y = -_ballSpeed.y;
+        _ballSpeed.x += _padSpeed.x / 2;
         return;
       }
 
@@ -269,6 +328,7 @@ class Gamefield {
     Position _ballSpeed;
     Position _padPos;
     Position _padSpeed;
+    Position _prevPadPos;
     int _width;
     int _height;
     int _brickRadius;
@@ -283,6 +343,8 @@ class Gamefield {
     Color _ballColor;
     Color _padColor;
     ExtendedTFT _screen;
+    int _joyXPin;
+    int _joyYPin;
 };
 
 
@@ -300,7 +362,9 @@ Gamefield gamefield(
   10,  // num cols,
   CS_PIN,
   DC_PIN,
-  RST_PIN);
+  RST_PIN,
+  JOY_X_PIN,
+  JOY_Y_PIN);
   
 void setup() {
   gamefield.drawInitial();
