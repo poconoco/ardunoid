@@ -59,7 +59,10 @@ class ExtendedTFT: public TFT {
 
 class Position {
   public:
-    Position() {}
+    Position()
+      : x(0)
+      , y(0) 
+    {}
     
     Position(int _x, int _y) 
       : x(_x)
@@ -73,15 +76,6 @@ class Position {
     void operator += (Position &operand) {
       x = x + operand.x;
       y = y + operand.y;
-    }
-
-    // Rotated coordinates
-    int rX() {
-      return y;
-    }
-
-    int rY() {
-      return x;
     }
     
     int x;
@@ -158,22 +152,22 @@ class Gamefield {
 
     void drawInitial() {
       _screen.begin();
+      _screen.setRotation(0);
       
       _screen.background(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
       _screen.stroke(_lineColor.r, _lineColor.g, _lineColor.b);
 
       _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
-      _screen.circle(_ballPos.rX(), _ballPos.rY(), _ballRadius);
+      _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
 
       _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
-      _screen.rect(_padPos.rX()-_padHalfWidth, _padPos.rY()-_padHalfHeight,
-                   _padPos.rX()+_padHalfWidth, _padPos.rY()+_padHalfHeight);
+      _screen.rect(_padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, _padWidth, _padHeight);
   
       for (int i = 0; i < _numBricks; i++) {
         Brick &brick = _bricks[i];
         _screen.fill(brick.color.r, brick.color.g, brick.color.b);
-        _screen.rect(brick.center.rX() - _brickRadius, 
-                     brick.center.rY() - _brickRadius, 
+        _screen.rect(brick.center.x - _brickRadius, 
+                     brick.center.y - _brickRadius, 
                      _brickRadius*2, _brickRadius*2);
       }
     }
@@ -199,16 +193,22 @@ class Gamefield {
       // Check ball flew out of the bottom
       if (newBallPos.y - _ballRadius >= _height) {
         // TODO: decrement pads, wait for click
-        _ballPos = Position(_width/2, _height*2/3);
-        _ballSpeed = Position(0, -2); 
+
+        _ballSpeed = Position(0, -2);
+        moveBall(Position(_width/2, _height*2/3));
       }
-      
+
+      moveBall(_ballPos + _ballSpeed);      
+    }
+
+    void moveBall(Position newPos) {
       // But actually move ball using new speed after collision
       Position oldBallPos = _ballPos;
-      _ballPos += _ballSpeed;  
-      _screen.moveCircle(oldBallPos.rX(), oldBallPos.rY(), 
-                         _ballPos.rX(), _ballPos.rY(), 
+      _ballPos = newPos;  
+      _screen.moveCircle(oldBallPos.x, oldBallPos.y, 
+                         _ballPos.x, _ballPos.y, 
                          _ballRadius, _ballColor, _lineColor, _backgroundColor);
+
     }
 
     void checkBrickCollision(Brick &brick, Position &ballPos) {
@@ -256,8 +256,8 @@ class Gamefield {
       // Draw background
       _screen.stroke(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
       _screen.fill(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
-      _screen.rect(brick.center.rX() - _brickRadius, 
-                   brick.center.rY() - _brickRadius, 
+      _screen.rect(brick.center.x - _brickRadius, 
+                   brick.center.y - _brickRadius, 
                    _brickRadius*2, _brickRadius*2);
       // Mark popped
       brick.popped = true;
@@ -266,8 +266,9 @@ class Gamefield {
   private:
     Brick *_bricks;
     Position _ballPos;
-    Position _padPos;
     Position _ballSpeed;
+    Position _padPos;
+    Position _padSpeed;
     int _width;
     int _height;
     int _brickRadius;
@@ -286,21 +287,21 @@ class Gamefield {
 
 
 Gamefield gamefield(
-  128, // screen width
-  160, // screen height
-  5,   // topMargin,
-  5,   // leftMargin,
+  128, // gamefield width
+  160, // gamefield height
+  5,   // top margin,
+  5,   // left margin,
   2,   // gap,
-  5,   // brickRadius,
-  3,   // ballRadius,
-  10,  // padWidth
-  4,   // padHeight
-  5,   // numRows,
-  10,  // numCols,
-  CS_PIN,   // tftCSpin,
-  DC_PIN,   // tftDCpin,
-  RST_PIN);  // tftRSTpin
-
+  5,   // brick radius,
+  3,   // ball radius,
+  20,  // pad width
+  4,   // pad height
+  5,   // num rows,
+  10,  // num cols,
+  CS_PIN,
+  DC_PIN,
+  RST_PIN);
+  
 void setup() {
   gamefield.drawInitial();
 }
