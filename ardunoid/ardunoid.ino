@@ -66,19 +66,58 @@ class ExtendedTFT: public TFT {
     }
 
   moveRoundRect(int16_t x0, int16_t y0, 
-           int16_t x1, int16_t y1,
-           int16_t w, int16_t h,
-           int16_t r,
-           Color &_fill, 
-           Color &_stroke, 
-           Color &_bg) {
+                int16_t x1, int16_t y1,
+                int16_t w, int16_t h,
+                int16_t r,
+                Color &_fill, 
+                Color &_stroke, 
+                Color &_bg) {
       uint16_t stroke = newColor(_stroke.r, _stroke.g, _stroke.b);
       uint16_t fill = newColor(_fill.r, _fill.g, _fill.b);
       uint16_t bg = newColor(_bg.r, _bg.g, _bg.b);
 
-      // TO DO: optimize
-      fillRoundRect(x0, y0, w, h, r, bg);
-      drawRoundRect(x0, y0, w, h, r, bg);
+      int xRedrawX;
+      int xRedrawY;
+      int xRedrawWidth;
+      int xRedrawHeight;
+      int yRedrawX;
+      int yRedrawY;
+      int yRedrawWidth;
+      int yRedrawHeight;
+      if (x1 > x0) {
+        xRedrawX = x0;
+        xRedrawWidth = x1 - x0 + r;
+        yRedrawX = x0;
+        yRedrawWidth = w;
+      } else {
+        xRedrawX = x1 + w - r;
+        xRedrawWidth = x0 - x1 + r;
+        yRedrawX = x0;
+        yRedrawWidth = w;
+      }
+
+      if (y1 > y0) {
+        xRedrawY = y0;
+        xRedrawHeight = h - (y1 - y0);
+        yRedrawY = y1 - h - r;
+        yRedrawHeight = y1 - y0 + r;
+      } else {
+        xRedrawY = y1;
+        xRedrawHeight = h - (y0 - y1);
+        yRedrawY = y0;
+        yRedrawHeight = y0 - y1 + r;
+      }
+
+      xRedrawWidth = min(xRedrawWidth, w);
+      xRedrawHeight = min(xRedrawHeight, h);
+      yRedrawWidth = min(yRedrawWidth, w);
+      yRedrawHeight = min(yRedrawHeight, h);
+
+      if (x0 != x1 && xRedrawWidth > 0 && xRedrawHeight > 0)
+        fillRect(xRedrawX, xRedrawY, xRedrawWidth, xRedrawHeight, bg);
+
+      if (y0 != y1 && yRedrawWidth > 0 && yRedrawHeight > 0)
+        fillRect(yRedrawX, yRedrawY, yRedrawWidth, yRedrawHeight, bg);
 
       fillRoundRect(x1, y1, w, h, r, fill);
       drawRoundRect(x1, y1, w, h, r, stroke);
@@ -249,7 +288,7 @@ class Gamefield {
 
     void readPadSpeed() {
         int joyX = analogRead(_joyXPin);
-        _padSpeed.x = map(joyX, 0, 1023, -4, 5);
+        _padSpeed.x = map(joyX, 0, 1023, -5, 6);
     }
 
     void moveBall(Position newPos) {
