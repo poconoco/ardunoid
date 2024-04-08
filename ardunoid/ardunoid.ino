@@ -146,8 +146,8 @@ class Gamefield {
       , _padHalfWidth(padWidth/2)
       , _padHalfHeight(padHeight/2)
       , _ballPos(width/2, height*2/3)
-      , _padPos(width/2, height - padHeight * 2)
-      , _prevPadPos(width/2, height - padHeight * 2)
+      , _padPos(width/2, height - padHeight * 1.2)
+      , _prevPadPos(width/2, height - padHeight * 1.2)
       , _ballSpeed(1, -2)
       , _backgroundColor(0, 0, 0)
       , _lineColor(255, 255, 255)
@@ -296,19 +296,44 @@ class Gamefield {
     }
 
     void checkPadCollision() {
+      // Already flying up (may be after low collision with pad)
+      if (_ballSpeed.y < 0)
+        return;
+
       // Higher than touching a pad
       if (_ballPos.y < _padPos.y-_padHalfHeight-_ballRadius)
         return;
       
+      // To allow more area for side collision
+      const int smallerHalfWidth = _padHalfWidth * 0.8;
+      const int sideKickBallSpeed = 1;
+
       // Top pad section
-      if (_ballPos.x >= _padPos.x-_padHalfWidth &&
-          _ballPos.x <= _padPos.x+_padHalfWidth) {
+      if (_ballPos.x >= _padPos.x - smallerHalfWidth &&
+          _ballPos.x <= _padPos.x + smallerHalfWidth) {
         _ballSpeed.y = -_ballSpeed.y;
-        _ballSpeed.x += _padSpeed.x / 2;
+        _ballSpeed.x = _ballSpeed.x >> 1;
+        _ballSpeed.x += _padSpeed.x >> 1;
         return;
       }
 
-      
+      // Left side kick
+      if (_ballPos.x < _padPos.x-smallerHalfWidth &&
+          _ballPos.x + _ballRadius >= _padPos.x - _padHalfWidth) {
+
+        _ballSpeed.x = - sideKickBallSpeed;
+        _ballSpeed.y = - _ballSpeed.y;
+      }
+
+      // Right side kick
+      if (_ballPos.x > _padPos.x+smallerHalfWidth &&
+          _ballPos.x - _ballRadius <= _padPos.x + _padHalfWidth) {
+
+        _ballSpeed.x = sideKickBallSpeed;
+        _ballSpeed.y = - _ballSpeed.y;
+      }
+
+
     }
 
     void popBrick(Brick &brick) {
