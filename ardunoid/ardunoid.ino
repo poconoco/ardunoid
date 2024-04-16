@@ -15,21 +15,6 @@
 #define JOY_X_PIN 0
 #define JOY_Y_PIN 1
 
-class Color {
-  public:
-    Color() {}
-    
-    Color(int _r, int _g, int _b)
-      : r(_r)
-      , g(_g)
-      , b(_b) 
-    {}
-  
-    int r;
-    int g;
-    int b;
-};
-
 class ExtendedTFT: public TFT {
   public:
     ExtendedTFT(uint8_t CS, uint8_t RS, uint8_t RST)
@@ -38,12 +23,9 @@ class ExtendedTFT: public TFT {
     moveCircle(int16_t x0, int16_t y0, 
                int16_t x1, int16_t y1, 
                int16_t r, 
-               Color &_fill, 
-               Color &_stroke, 
-               Color &_bg) {
-      uint16_t stroke = newColor(_stroke.r, _stroke.g, _stroke.b);
-      uint16_t fill = newColor(_fill.r, _fill.g, _fill.b);
-      uint16_t bg = newColor(_bg.r, _bg.g, _bg.b);
+               uint16_t fill, 
+               uint16_t stroke, 
+               uint16_t bg) {
 
       int r2 = r * r + 1;
       int dx = x1 - x0;
@@ -69,13 +51,9 @@ class ExtendedTFT: public TFT {
                 int16_t x1, int16_t y1,
                 int16_t w, int16_t h,
                 int16_t r,
-                Color &_fill, 
-                Color &_stroke, 
-                Color &_bg) {
-      uint16_t stroke = newColor(_stroke.r, _stroke.g, _stroke.b);
-      uint16_t fill = newColor(_fill.r, _fill.g, _fill.b);
-      uint16_t bg = newColor(_bg.r, _bg.g, _bg.b);
-
+                uint16_t fill, 
+                uint16_t stroke, 
+                uint16_t bg) {
       int xRedrawX;
       int xRedrawY;
       int xRedrawWidth;
@@ -124,38 +102,38 @@ class ExtendedTFT: public TFT {
   }
 };
 
-class Position {
+struct Vector {
   public:
-    Position()
+    Vector()
       : x(0)
       , y(0) 
     {}
     
-    Position(int _x, int _y) 
+    Vector(int _x, int _y) 
       : x(_x)
       , y(_y)
     {}
 
-    Position operator + (Position &operand) {
-      return Position(x+operand.x, y+operand.y);
+    Vector operator + (Vector &operand) {
+      return Vector(x+operand.x, y+operand.y);
     }
 
-    void operator += (Position &operand) {
+    void operator += (Vector &operand) {
       x = x + operand.x;
       y = y + operand.y;
     }
-    
+
     int x;
     int y;
 };
 
-class Brick {
-  public:
-    Brick() : popped(false) {}
-  
-    Position center;
-    Color color;
-    bool popped;
+struct Brick {
+  Brick()
+    : popped(false)
+  {}
+
+  Vector center;
+  bool popped;
 };
 
 class Gamefield {
@@ -188,32 +166,26 @@ class Gamefield {
       , _padPos(width/2, height - padHeight * 1.2)
       , _prevPadPos(width/2, height - padHeight * 1.2)
       , _ballSpeed(1, -2)
-      , _backgroundColor(0, 0, 0)
-      , _lineColor(255, 255, 255)
-      , _ballColor(0, 0, 255)
-      , _padColor(255, 255, 0)
       , _screen(tftCSpin, tftDCpin, tftRSTpin)
       , _numBricks(numRows*numCols)
+      , _numCols(numCols)
+      , _numRows(numRows)
       , _joyXPin(joyXPin)
       , _joyYPin(joyYPin)
     {
-      Color colors[] = {
-        Color(255, 0, 0),
-        Color(255, 255, 0),
-        Color(0, 255, 255),
-        Color(255, 0, 255),
-        Color(0, 255, 0)
-      };
 
-      _bricks = new Brick[numRows * numCols];
+      _bgColor = _screen.newColor(0, 0, 0);
+      _strokeColor = _screen.newColor(255, 255, 255);
+      _ballColor = _screen.newColor(0, 0, 255);
+      _padColor = _screen.newColor(255, 255, 0);
+
+      _bricks = new Brick[_numBricks];
       
       for (int row = 0; row < numRows; row++) {
         for (int col = 0; col < numCols; col++) {
-          int x = leftMargin + (col * (brickRadius*2 + gap)) + brickRadius;
-          int y = topMargin + (row * (brickRadius*2 + gap)) + brickRadius;
           int brickIndex = row*numCols + col;
-          _bricks[brickIndex].center = Position(x, y); 
-          _bricks[brickIndex].color = colors[row];
+          _bricks[brickIndex].center.x = leftMargin + (col * (brickRadius*2 + gap)) + brickRadius;
+          _bricks[brickIndex].center.y = topMargin + (row * (brickRadius*2 + gap)) + brickRadius;
         }
       }
     }
@@ -226,17 +198,25 @@ class Gamefield {
       _screen.begin();
       _screen.setRotation(0);
       
-      _screen.background(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
-      _screen.stroke(_lineColor.r, _lineColor.g, _lineColor.b);
+      _screen.background(_bgColor);
+      _screen.stroke(_strokeColor);
 
-      _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
+      _screen.fill(_ballColor);
       _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
 
       drawPad();
 
+      uint16_t brickColors[] = {
+        _screen.newColor(255, 0, 0),
+        _screen.newColor(255, 255, 0),
+        _screen.newColor(0, 255, 255),
+        _screen.newColor(255, 0, 255),
+        _screen.newColor(0, 255, 0)
+      };
+
       for (int i = 0; i < _numBricks; i++) {
         Brick &brick = _bricks[i];
-        _screen.fill(brick.color.r, brick.color.g, brick.color.b);
+        _screen.fill(brickColors[(i / _numCols) % 5]);
         _screen.rect(brick.center.x - _brickRadius, 
                      brick.center.y - _brickRadius, 
                      _brickRadius*2, _brickRadius*2);
@@ -249,14 +229,14 @@ class Gamefield {
                             _padWidth, _padHeight,
                             _padHeight / 2,
                             _padColor,
-                            _lineColor,
-                            _backgroundColor);      
+                            _strokeColor,
+                            _bgColor);      
 
       _prevPadPos = _padPos;
     }
 
     void tick() {
-      Position potentialBallPos = _ballPos + _ballSpeed;
+      Vector potentialBallPos = _ballPos + _ballSpeed;
       readPadSpeed();
 
       // Calculate walls collisions first
@@ -278,8 +258,8 @@ class Gamefield {
       if (potentialBallPos.y - _ballRadius >= _height) {
         // TODO: decrement pads, wait for click
 
-        _ballSpeed = Position(0, -2);
-        moveBall(Position(_width/2, _height*2/3));
+        _ballSpeed = Vector(0, -2);
+        moveBall(Vector(_width/2, _height*2/3));
       }
 
       moveBall(_ballPos + _ballSpeed);
@@ -291,24 +271,24 @@ class Gamefield {
         _padSpeed.x = map(joyX, 0, 1023, -5, 6);
     }
 
-    void moveBall(Position newPos) {
+    void moveBall(Vector newPos) {
       // But actually move ball using new speed after collision
-      Position oldBallPos = _ballPos;
+      Vector oldBallPos = _ballPos;
       _ballPos = newPos;  
       _screen.moveCircle(oldBallPos.x, oldBallPos.y, 
                          _ballPos.x, _ballPos.y, 
-                         _ballRadius, _ballColor, _lineColor, _backgroundColor);
+                         _ballRadius, _ballColor, _strokeColor, _bgColor);
 
     }
 
-    void movePad(Position newPos) {
+    void movePad(Vector newPos) {
       if (newPos.x - _padHalfWidth >= 0 && newPos.x + _padHalfWidth < _width)
         _padPos = newPos;
 
       drawPad();    
     }
 
-    void checkBrickCollision(Brick &brick, Position &ballPos) {
+    void checkBrickCollision(Brick &brick, Vector &ballPos) {
       if (brick.popped)
         return;
       
@@ -377,8 +357,8 @@ class Gamefield {
 
     void popBrick(Brick &brick) {
       // Draw background
-      _screen.stroke(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
-      _screen.fill(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
+      _screen.stroke(_bgColor);
+      _screen.fill(_bgColor);
       _screen.rect(brick.center.x - _brickRadius, 
                    brick.center.y - _brickRadius, 
                    _brickRadius*2, _brickRadius*2);
@@ -388,11 +368,11 @@ class Gamefield {
   
   private:
     Brick *_bricks;
-    Position _ballPos;
-    Position _ballSpeed;
-    Position _padPos;
-    Position _padSpeed;
-    Position _prevPadPos;
+    Vector _ballPos;
+    Vector _ballSpeed;
+    Vector _padPos;
+    Vector _padSpeed;
+    Vector _prevPadPos;
     int _width;
     int _height;
     int _brickRadius;
@@ -402,10 +382,12 @@ class Gamefield {
     int _padHalfWidth;
     int _padHalfHeight;
     int _numBricks;
-    Color _backgroundColor;
-    Color _lineColor;
-    Color _ballColor;
-    Color _padColor;
+    int _numRows;
+    int _numCols;
+    uint16_t _bgColor;
+    uint16_t _strokeColor;
+    uint16_t _ballColor;
+    uint16_t _padColor;
     ExtendedTFT _screen;
     int _joyXPin;
     int _joyYPin;
