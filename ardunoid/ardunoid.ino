@@ -18,16 +18,22 @@
 class Color {
   public:
     Color() {}
+
+    Color(const Color &other) 
+      : r(other.r)
+      , g(other.g)
+      , b(other.b) 
+    {}
     
-    Color(int _r, int _g, int _b)
+    Color(uint8_t _r, uint8_t _g, uint8_t _b)
       : r(_r)
       , g(_g)
       , b(_b) 
     {}
   
-    int r;
-    int g;
-    int b;
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
 };
 
 class ExtendedTFT: public TFT {
@@ -124,38 +130,199 @@ class ExtendedTFT: public TFT {
   }
 };
 
-class Position {
+class Vector {
   public:
-    Position()
+    Vector()
       : x(0)
       , y(0) 
     {}
+
+    Vector(const Vector &other) 
+      : x(other.x)
+      , y(other.y)
+    {}
     
-    Position(int _x, int _y) 
+    Vector(int _x, int _y) 
       : x(_x)
       , y(_y)
     {}
 
-    Position operator + (Position &operand) {
-      return Position(x+operand.x, y+operand.y);
+    Vector operator + (Vector &operand) {
+      return Vector(x+operand.x, y+operand.y);
     }
 
-    void operator += (Position &operand) {
+    void operator += (Vector &operand) {
       x = x + operand.x;
       y = y + operand.y;
+    }
+
+    void setOffScreen() {
+      x = -1000;
+      y = -1000;
     }
     
     int x;
     int y;
 };
 
-class Brick {
+class GamefieldObject {
   public:
-    Brick() : popped(false) {}
+    GamefieldObject(int x, int y, ExtendedTFT& screen, Color fillColor, Color strokeColor, Color bgColor) 
+      : center(x, y)
+      , speed(0, 0)
+      , _screen(screen)
+      , _color(fillColor)
+      , _strokeColor(strokeColor)
+      , _bgColor(bgColor)
+    {}
+
+    void move() {
+      center += speed;
+    }
+
+    virtual void draw() = 0;
+    virtual void clear() = 0;
+
+    Vector center;
+    Vector speed;
+
+  protected:
+    ExtendedTFT& _screen;
+    Color _color;
+    Color _strokeColor;
+    Color _bgColor;
+};
+
+class Ball : public GamefieldObject {
+  public:
+    Ball(ExtendedTFT& screen, 
+         int x, 
+         int y, 
+         int r, 
+         Color fillColor, 
+         Color strokeColor, 
+         Color bgColor,
+         int fieldWidth,
+         int fieldHeight)
+      : GamefieldObject(x, y, screen, fillColor, strokeColor, bgColor)
+      , radius(r)
+      , _initialCenter(x, y)
+      , _fieldWidth(fieldWidth)
+      , _fieldHeight(fieldHeight)
+    {}
+
+    void reset() {
+      speed.x = 1;
+      speed.y = -2;
+
+      center = _initialCenter;
+    }
+
+    virtual void draw() {
+      _screen.moveCircle(_prevCenter.x, _prevCenter.y, 
+                         center.x, center.y, 
+                         radius, _color, _strokeColor, _bgColor);
+      _prevCenter = center;
+    }
+
+    virtual void clear() {
+      _screen.stroke(_bgColor.r, _bgColor.g, _bgColor.b);
+      _screen.fill(_bgColor.r, _bgColor.g, _bgColor.b);
+      _screen.circle(center.x, center.y, radius);
+      _prevCenter.setOffScreen();
+    }
+
+    void wallCollision() {
+      Vector potentialBallPos = center + speed;
+
+      if ((potentialBallPos.x + radius >= _fieldWidth) || (potentialBallPos.x - radius <= 0))
+        speed.x *= -1;
+
+      if (potentialBallPos.y - radius <= 0)
+        speed.y *= -1;
+
+    }
+
+    bool isOut() {
+      return center.y + radius >= _fieldHeight;
+    }
+
+    int radius;
+
+  private:
+    int _fieldWidth;
+    int _fieldHeight;
+    Vector _prevCenter;
+    Vector _initialCenter;
+};
+
+class BallCollidable : public GamefieldObject {
+  public:
+    BallCollidable(int x, int y, ExtendedTFT& screen, Color fillColor, Color strokeColor, Color bgColor)
+      : GamefieldObject(x, y, screen, fillColor, strokeColor, bgColor)
+    {}
+
+    virtual bool collision(Ball &ball) = 0;
+};
+
+class Brick : public BallCollidable {
+  public:
+    Brick(ExtendedTFT& screen, int x, int y, int w, int h, Color fillColor, Color strokeColor, Color bgColor) 
+      : BallCollidable(x, y, screen, fillColor, strokeColor, bgColor)
+      , width(w)
+      , height(h)
+      , _popped(false)
+    {}
   
-    Position center;
-    Color color;
-    bool popped;
+    virtual void draw() {
+      _screen.stroke(_strokeColor.r, _strokeColor.g, _strokeColor.b);
+      _screen.fill(_color.r, _color.g, _color.b);
+      _screen.rect(center.x - width >> 1, 
+                   center.y - height >> 1, 
+                   width, height);      
+    }
+
+    virtual void clear() {
+      _screen.stroke(_bgColor.r, _bgColor.g, _bgColor.b);
+      _screen.fill(_bgColor.r, _bgColor.g, _bgColor.b);
+      _screen.rect(center.x - width >> 1, 
+                   center.y - height >> 1, 
+                   width, height);
+
+    }
+
+    virtual bool collision(Ball &ball) {
+      if (_popped)
+        return;
+      
+      if (abs(center.x - ball.center.x) < width >> 1 + ball.radius &&
+          abs(center.y - ball.center.y) < height >> 1 + ball.radius) {
+            
+        // Collision
+        _popped = true;
+        clear();
+
+        // Ball coordinates relative to brick center
+        int relBallX = ball.center.x - center.x - width >> 1;
+        int relBallY = ball.center.y - center.y - height >> 1;
+
+        // Determine collision side
+        if (abs(relBallX) > abs(relBallY)) {
+          // Left or right collision
+          ball.speed.x *= -1;
+        } else 
+        {
+          // Top or Bottom collision
+          ball.speed.y *= -1;
+        }
+      }
+    }
+
+  private:
+    int width;
+    int height;
+    bool _popped;
+
 };
 
 class Gamefield {
@@ -165,7 +332,7 @@ class Gamefield {
               int topMargin,
               int leftMargin,
               int gap,
-              int brickRadius,
+              int brickWidth,
               int ballRadius,
               int padWidth,
               int padHeight,
@@ -178,25 +345,23 @@ class Gamefield {
               int joyYPin)
       : _width(width)
       , _height(height)
-      , _brickRadius(brickRadius)
-      , _ballRadius(ballRadius)
       , _padWidth(padWidth)
       , _padHeight(padHeight)
       , _padHalfWidth(padWidth/2)
       , _padHalfHeight(padHeight/2)
-      , _ballPos(width/2, height*2/3)
       , _padPos(width/2, height - padHeight * 1.2)
       , _prevPadPos(width/2, height - padHeight * 1.2)
-      , _ballSpeed(1, -2)
       , _backgroundColor(0, 0, 0)
       , _lineColor(255, 255, 255)
-      , _ballColor(0, 0, 255)
       , _padColor(255, 255, 0)
       , _screen(tftCSpin, tftDCpin, tftRSTpin)
       , _numBricks(numRows*numCols)
       , _joyXPin(joyXPin)
       , _joyYPin(joyYPin)
+      , _ball(_screen, width/2, height*2/3, ballRadius, Color(0, 0, 255), _lineColor, _backgroundColor, width, height)
     {
+      _ball.reset();
+
       Color colors[] = {
         Color(255, 0, 0),
         Color(255, 255, 0),
@@ -205,20 +370,36 @@ class Gamefield {
         Color(0, 255, 0)
       };
 
-      _bricks = new Brick[numRows * numCols];
-      
+      _bricks = new Brick*[numRows * numCols];
+      int brickHeight = brickWidth >> 1;
+
+      Serial.print("Starting...\n");
+
       for (int row = 0; row < numRows; row++) {
         for (int col = 0; col < numCols; col++) {
-          int x = leftMargin + (col * (brickRadius*2 + gap)) + brickRadius;
-          int y = topMargin + (row * (brickRadius*2 + gap)) + brickRadius;
-          int brickIndex = row*numCols + col;
-          _bricks[brickIndex].center = Position(x, y); 
-          _bricks[brickIndex].color = colors[row];
+          int x = leftMargin + (col * (brickWidth + gap)) + brickWidth >> 1;
+          int y = topMargin + (row * (brickHeight + gap)) + brickHeight >> 1;
+          int brickIndex = row * numCols + col;
+          Color &color = colors[row % 5];
+          const Brick *test = new Brick(_screen, x, y, brickWidth, brickHeight, color, color, color);
+          //Serial.print('Brick x, y: ');
+          //Serial.print(x);
+          //Serial.print(', ');
+          //Serial.print(y);
+          //Serial.print('\n');
+          Serial.print("index: ");
+          Serial.print(brickIndex);
+          Serial.print("\n");
+          _bricks[brickIndex] = NULL;
+//          _bricks[brickIndex] = new Brick(_screen, x, y, brickWidth, brickHeight, color, _lineColor, _backgroundColor);
         }
       }
     }
     
     ~Gamefield() {
+      for (int i = 0; i < _numBricks; i++)
+        delete _bricks[i];
+
       delete _bricks;
     }
 
@@ -229,18 +410,12 @@ class Gamefield {
       _screen.background(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
       _screen.stroke(_lineColor.r, _lineColor.g, _lineColor.b);
 
-      _screen.fill(_ballColor.r, _ballColor.g, _ballColor.b);
-      _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
-
       drawPad();
 
-      for (int i = 0; i < _numBricks; i++) {
-        Brick &brick = _bricks[i];
-        _screen.fill(brick.color.r, brick.color.g, brick.color.b);
-        _screen.rect(brick.center.x - _brickRadius, 
-                     brick.center.y - _brickRadius, 
-                     _brickRadius*2, _brickRadius*2);
-      }
+//      for (int i = 0; i < _numBricks; i++)
+//        _bricks[i]->draw();
+
+      _ball.draw();
     }
 
     void drawPad() {
@@ -256,33 +431,25 @@ class Gamefield {
     }
 
     void tick() {
-      Position potentialBallPos = _ballPos + _ballSpeed;
       readPadSpeed();
 
-      // Calculate walls collisions first
-      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0))
-        _ballSpeed.x = -_ballSpeed.x;
+      _ball.wallCollision();
 
-      if (potentialBallPos.y - _ballRadius <= 0)
-        _ballSpeed.y = -_ballSpeed.y;
+      if (_ball.isOut()) {
+        _ball.reset();
+        _ball.draw();
 
-      // Then brick collisions
-      for (int i = 0; i < _numBricks; i++) {
-        checkBrickCollision(_bricks[i], potentialBallPos);                
+        return;
       }
 
-      // Then pad collision
+//      for (int i = 0; i < _numBricks; i++) {
+//        _bricks[i]->collision(_ball);
+//      }
+
       checkPadCollision();
 
-      // Check ball flew out of the bottom
-      if (potentialBallPos.y - _ballRadius >= _height) {
-        // TODO: decrement pads, wait for click
-
-        _ballSpeed = Position(0, -2);
-        moveBall(Position(_width/2, _height*2/3));
-      }
-
-      moveBall(_ballPos + _ballSpeed);
+      _ball.move();
+      _ball.draw();
       movePad(_padPos + _padSpeed);
     }
 
@@ -291,56 +458,20 @@ class Gamefield {
         _padSpeed.x = map(joyX, 0, 1023, -5, 6);
     }
 
-    void moveBall(Position newPos) {
-      // But actually move ball using new speed after collision
-      Position oldBallPos = _ballPos;
-      _ballPos = newPos;  
-      _screen.moveCircle(oldBallPos.x, oldBallPos.y, 
-                         _ballPos.x, _ballPos.y, 
-                         _ballRadius, _ballColor, _lineColor, _backgroundColor);
-
-    }
-
-    void movePad(Position newPos) {
+    void movePad(Vector newPos) {
       if (newPos.x - _padHalfWidth >= 0 && newPos.x + _padHalfWidth < _width)
         _padPos = newPos;
 
       drawPad();    
     }
 
-    void checkBrickCollision(Brick &brick, Position &ballPos) {
-      if (brick.popped)
-        return;
-      
-      if (abs(brick.center.x - ballPos.x) < _brickRadius + _ballRadius &&
-          abs(brick.center.y - ballPos.y) < _brickRadius + _ballRadius) {
-            
-        // Collision
-        popBrick(brick);
-
-        // Ball coordinates relative to brick center
-        int relBallX = ballPos.x - brick.center.x;
-        int relBallY = ballPos.y - brick.center.y;
-
-        // Determine collision side
-        if (abs(relBallX) > abs(relBallY)) {
-          // Left or right collision
-          _ballSpeed.x = -_ballSpeed.x;
-        } else 
-        {
-          // Top or Bottom collision
-          _ballSpeed.y = -_ballSpeed.y;
-        }
-      }
-    }
-
     void checkPadCollision() {
       // Already flying up (may be after low collision with pad)
-      if (_ballSpeed.y < 0)
+      if (_ball.speed.y < 0)
         return;
 
       // Higher than touching a pad
-      if (_ballPos.y < _padPos.y-_padHalfHeight-_ballRadius)
+      if (_ball.center.y + _ball.radius < _padPos.y-_padHalfHeight)
         return;
       
       // To allow more area for side collision
@@ -348,55 +479,39 @@ class Gamefield {
       const int sideKickBallSpeed = 1;
 
       // Top pad section
-      if (_ballPos.x >= _padPos.x - smallerHalfWidth &&
-          _ballPos.x <= _padPos.x + smallerHalfWidth) {
-        _ballSpeed.y = -_ballSpeed.y;
-        _ballSpeed.x = _ballSpeed.x >> 1;
-        _ballSpeed.x += _padSpeed.x >> 1;
+      if (_ball.center.x >= _padPos.x - smallerHalfWidth &&
+          _ball.center.x <= _padPos.x + smallerHalfWidth) {
+        _ball.speed.y *= -1;
+        _ball.speed.x = _ball.speed.x >> 1;
+        _ball.speed.x += _padSpeed.x >> 1;
         return;
       }
 
       // Left side kick
-      if (_ballPos.x < _padPos.x-smallerHalfWidth &&
-          _ballPos.x + _ballRadius >= _padPos.x - _padHalfWidth) {
+      if (_ball.center.x < _padPos.x - smallerHalfWidth &&
+          _ball.center.x + _ball.radius >= _padPos.x - _padHalfWidth) {
 
-        _ballSpeed.x = - sideKickBallSpeed;
-        _ballSpeed.y = - _ballSpeed.y;
+        _ball.speed.x = - sideKickBallSpeed;
+        _ball.speed.y *= -1;
       }
 
       // Right side kick
-      if (_ballPos.x > _padPos.x+smallerHalfWidth &&
-          _ballPos.x - _ballRadius <= _padPos.x + _padHalfWidth) {
+      if (_ball.center.x > _padPos.x + smallerHalfWidth &&
+          _ball.center.x - _ball.radius <= _padPos.x + _padHalfWidth) {
 
-        _ballSpeed.x = sideKickBallSpeed;
-        _ballSpeed.y = - _ballSpeed.y;
+        _ball.speed.x = sideKickBallSpeed;
+        _ball.speed.y *= -1;
       }
-
-
-    }
-
-    void popBrick(Brick &brick) {
-      // Draw background
-      _screen.stroke(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
-      _screen.fill(_backgroundColor.r, _backgroundColor.g, _backgroundColor.b);
-      _screen.rect(brick.center.x - _brickRadius, 
-                   brick.center.y - _brickRadius, 
-                   _brickRadius*2, _brickRadius*2);
-      // Mark popped
-      brick.popped = true;
     }
   
   private:
-    Brick *_bricks;
-    Position _ballPos;
-    Position _ballSpeed;
-    Position _padPos;
-    Position _padSpeed;
-    Position _prevPadPos;
+    Brick **_bricks;
+    Ball _ball;
+    Vector _padPos;
+    Vector _padSpeed;
+    Vector _prevPadPos;
     int _width;
     int _height;
-    int _brickRadius;
-    int _ballRadius;
     int _padWidth;
     int _padHeight;
     int _padHalfWidth;
@@ -404,7 +519,6 @@ class Gamefield {
     int _numBricks;
     Color _backgroundColor;
     Color _lineColor;
-    Color _ballColor;
     Color _padColor;
     ExtendedTFT _screen;
     int _joyXPin;
@@ -412,29 +526,36 @@ class Gamefield {
 };
 
 
-Gamefield gamefield(
-  128, // gamefield width
-  160, // gamefield height
-  5,   // top margin,
-  5,   // left margin,
-  2,   // gap,
-  5,   // brick radius,
-  3,   // ball radius,
-  20,  // pad width
-  4,   // pad height
-  5,   // num rows,
-  10,  // num cols,
-  CS_PIN,
-  DC_PIN,
-  RST_PIN,
-  JOY_X_PIN,
-  JOY_Y_PIN);
+Gamefield *gf;
   
 void setup() {
-  gamefield.drawInitial();
+  Serial.begin(9600);
+  while (!Serial) {
+    ;  // wait for serial port to connect. Needed for native USB port only
+  }
+
+  gf = new Gamefield(
+    128, // gamefield width
+    160, // gamefield height
+    5,   // top margin,
+    5,   // left margin,
+    2,   // gap,
+    5,   // brick radius,
+    3,   // ball radius,
+    20,  // pad width
+    4,   // pad height
+    2,   // num rows,
+    10,  // num cols,
+    CS_PIN,
+    DC_PIN,
+    RST_PIN,
+    JOY_X_PIN,
+    JOY_Y_PIN);
+
+//  gf->drawInitial();
 }
 
 void loop() {
-  gamefield.tick();
-  delay(10);
+//  gf->tick();
+//  delay(10);
 }
