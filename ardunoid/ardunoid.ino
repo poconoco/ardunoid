@@ -143,7 +143,7 @@ class Gamefield {
               int topMargin,
               int leftMargin,
               int gap,
-              int brickRadius,
+              int brickWidth,
               int ballRadius,
               int padWidth,
               int padHeight,
@@ -156,7 +156,8 @@ class Gamefield {
               int joyYPin)
       : _width(width)
       , _height(height)
-      , _brickRadius(brickRadius)
+      , _brickWidth(brickWidth)
+      , _brickHeight(brickWidth / 2)
       , _ballRadius(ballRadius)
       , _padWidth(padWidth)
       , _padHeight(padHeight)
@@ -184,8 +185,8 @@ class Gamefield {
       for (int row = 0; row < numRows; row++) {
         for (int col = 0; col < numCols; col++) {
           int brickIndex = row*numCols + col;
-          _bricks[brickIndex].center.x = leftMargin + (col * (brickRadius*2 + gap)) + brickRadius;
-          _bricks[brickIndex].center.y = topMargin + (row * (brickRadius*2 + gap)) + brickRadius;
+          _bricks[brickIndex].center.x = leftMargin + (col * (_brickWidth + gap)) + _brickWidth / 2;
+          _bricks[brickIndex].center.y = topMargin + (row * (_brickHeight + gap)) + _brickHeight / 2;
         }
       }
     }
@@ -217,9 +218,9 @@ class Gamefield {
       for (int i = 0; i < _numBricks; i++) {
         Brick &brick = _bricks[i];
         _screen.fill(brickColors[(i / _numCols) % 5]);
-        _screen.rect(brick.center.x - _brickRadius, 
-                     brick.center.y - _brickRadius, 
-                     _brickRadius*2, _brickRadius*2);
+        _screen.rect(brick.center.x - _brickWidth / 2, 
+                     brick.center.y - _brickHeight / 2, 
+                     _brickWidth, _brickHeight);
       }
     }
 
@@ -292,15 +293,15 @@ class Gamefield {
       if (brick.popped)
         return;
       
-      if (abs(brick.center.x - ballPos.x) < _brickRadius + _ballRadius &&
-          abs(brick.center.y - ballPos.y) < _brickRadius + _ballRadius) {
+      if (abs(brick.center.x - ballPos.x) < _brickWidth / 2 + _ballRadius &&
+          abs(brick.center.y - ballPos.y) < _brickHeight / 2 + _ballRadius) {
             
         // Collision
         popBrick(brick);
 
         // Ball coordinates relative to brick center
-        int relBallX = ballPos.x - brick.center.x;
-        int relBallY = ballPos.y - brick.center.y;
+        int relBallX = ballPos.x - brick.center.x + _brickWidth / 2;
+        int relBallY = ballPos.y - brick.center.y + _brickHeight / 2;
 
         // Determine collision side
         if (abs(relBallX) > abs(relBallY)) {
@@ -359,9 +360,9 @@ class Gamefield {
       // Draw background
       _screen.stroke(_bgColor);
       _screen.fill(_bgColor);
-      _screen.rect(brick.center.x - _brickRadius, 
-                   brick.center.y - _brickRadius, 
-                   _brickRadius*2, _brickRadius*2);
+      _screen.rect(brick.center.x - _brickWidth / 2, 
+                   brick.center.y - _brickHeight / 2, 
+                   _brickWidth, _brickHeight);
       // Mark popped
       brick.popped = true;
     }
@@ -375,7 +376,8 @@ class Gamefield {
     Vector _prevPadPos;
     int _width;
     int _height;
-    int _brickRadius;
+    const int _brickWidth;
+    const int _brickHeight;
     int _ballRadius;
     int _padWidth;
     int _padHeight;
@@ -400,11 +402,11 @@ Gamefield gamefield(
   5,   // top margin,
   5,   // left margin,
   2,   // gap,
-  5,   // brick radius,
+  10,   // brick radius,
   3,   // ball radius,
   20,  // pad width
   4,   // pad height
-  5,   // num rows,
+  10,   // num rows,
   10,  // num cols,
   CS_PIN,
   DC_PIN,
