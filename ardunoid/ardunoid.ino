@@ -15,6 +15,8 @@
 #define JOY_X_PIN 0
 #define JOY_Y_PIN 1
 
+#define SPEAKER_PIN 7
+
 class ExtendedTFT: public TFT {
   public:
     ExtendedTFT(uint8_t CS, uint8_t RS, uint8_t RST)
@@ -241,26 +243,30 @@ class Gamefield {
       readPadSpeed();
 
       // Calculate walls collisions first
-      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0))
+      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0)) {
         _ballSpeed.x = -_ballSpeed.x;
+        tone(SPEAKER_PIN, 300, 10);
+      }
 
-      if (potentialBallPos.y - _ballRadius <= 0)
+      if (potentialBallPos.y - _ballRadius <= 0) {
         _ballSpeed.y = -_ballSpeed.y;
+        tone(SPEAKER_PIN, 300, 10);
+      }
 
       // Then brick collisions
       for (int i = 0; i < _numBricks; i++) {
-        checkBrickCollision(_bricks[i], potentialBallPos);                
+        if (checkBrickCollision(_bricks[i], potentialBallPos))
+          tone(SPEAKER_PIN, 500, 10);
       }
 
       // Then pad collision
-      checkPadCollision();
+      if (checkPadCollision())
+        tone(SPEAKER_PIN, 150, 50);
 
       // Check ball flew out of the bottom
       if (potentialBallPos.y - _ballRadius >= _height) {
         // TODO: decrement pads, wait for click
-
-        _ballSpeed = Vector(0, -2);
-        moveBall(Vector(_width/2, _height*2/3));
+        ballOut();
       }
 
       moveBall(_ballPos + _ballSpeed);
@@ -289,12 +295,12 @@ class Gamefield {
       drawPad();    
     }
 
-    void checkBrickCollision(Brick &brick, Vector &ballPos) {
+    bool checkBrickCollision(Brick &brick, Vector &ballPos) {
       if (brick.popped)
-        return;
+        return false;
       
-      if (abs(brick.center.x - ballPos.x) < _brickWidth / 2 + _ballRadius &&
-          abs(brick.center.y - ballPos.y) < _brickHeight / 2 + _ballRadius) {
+      if (abs(brick.center.x - ballPos.x) <= _brickWidth / 2 + _ballRadius &&
+          abs(brick.center.y - ballPos.y) <= _brickHeight / 2 + _ballRadius) {
             
         // Collision
         popBrick(brick);
@@ -312,18 +318,26 @@ class Gamefield {
           // Top or Bottom collision
           _ballSpeed.y = -_ballSpeed.y;
         }
+
+        return true;
       }
+
+      return false;
     }
 
-    void checkPadCollision() {
+    bool checkPadCollision() {
       // Already flying up (may be after low collision with pad)
       if (_ballSpeed.y < 0)
-        return;
+        return false;
 
       // Higher than touching a pad
-      if (_ballPos.y < _padPos.y-_padHalfHeight-_ballRadius)
-        return;
+      if (_ballPos.y + _ballRadius < _padPos.y - _padHalfHeight)
+        return false;
       
+      // Too low to pick up
+      if (_ballPos.y > _padPos.y)
+        return false;
+
       // To allow more area for side collision
       const int smallerHalfWidth = _padHalfWidth * 0.8;
       const int sideKickBallSpeed = 1;
@@ -334,7 +348,8 @@ class Gamefield {
         _ballSpeed.y = -_ballSpeed.y;
         _ballSpeed.x = _ballSpeed.x >> 1;
         _ballSpeed.x += _padSpeed.x >> 1;
-        return;
+
+        return true;
       }
 
       // Left side kick
@@ -343,6 +358,8 @@ class Gamefield {
 
         _ballSpeed.x = - sideKickBallSpeed;
         _ballSpeed.y = - _ballSpeed.y;
+
+        return true;
       }
 
       // Right side kick
@@ -351,6 +368,8 @@ class Gamefield {
 
         _ballSpeed.x = sideKickBallSpeed;
         _ballSpeed.y = - _ballSpeed.y;
+
+        return true;
       }
 
 
@@ -365,6 +384,16 @@ class Gamefield {
                    _brickWidth, _brickHeight);
       // Mark popped
       brick.popped = true;
+    }
+
+    void ballOut() {
+      tone(SPEAKER_PIN, 300, 200);
+      delay(200);
+      tone(SPEAKER_PIN, 200, 200);
+      delay(200);
+
+      _ballSpeed = Vector(0, -2);
+      moveBall(Vector(_width/2, _height*2/3));
     }
   
   private:
