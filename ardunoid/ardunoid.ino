@@ -7,15 +7,17 @@
 #include <SPI.h>
 
 // TFT Screen pins
-#define CS_PIN   10
-#define DC_PIN   9
-#define RST_PIN  8
+#define CS_PIN   6
+#define DC_PIN   7
+#define RST_PIN  5
 
 // Joystick pins
 #define JOY_X_PIN 0
 #define JOY_Y_PIN 1
 
-#define SPEAKER_PIN 7
+#define JOY_X_DIR -1  // 1 or -1
+
+#define SPEAKER_PIN 8
 
 class ExtendedTFT: public TFT {
   public:
@@ -150,12 +152,7 @@ class Gamefield {
               int padWidth,
               int padHeight,
               int numRows,
-              int numCols,
-              int tftCSpin,
-              int tftDCpin,
-              int tftRSTpin,
-              int joyXPin,
-              int joyYPin)
+              int numCols)
       : _width(width)
       , _height(height)
       , _brickWidth(brickWidth)
@@ -169,12 +166,10 @@ class Gamefield {
       , _padPos(width/2, height - padHeight * 1.2)
       , _prevPadPos(width/2, height - padHeight * 1.2)
       , _ballSpeed(1, -2)
-      , _screen(tftCSpin, tftDCpin, tftRSTpin)
+      , _screen(CS_PIN, DC_PIN, RST_PIN)
       , _numBricks(numRows*numCols)
       , _numCols(numCols)
       , _numRows(numRows)
-      , _joyXPin(joyXPin)
-      , _joyYPin(joyYPin)
     {
 
       _bgColor = _screen.newColor(0, 0, 0);
@@ -274,8 +269,8 @@ class Gamefield {
     }
 
     void readPadSpeed() {
-        int joyX = analogRead(_joyXPin);
-        _padSpeed.x = map(joyX, 0, 1023, -5, 6);
+        int joyX = analogRead(JOY_X_PIN);
+        _padSpeed.x = map(joyX, 0, 1023, -5 * JOY_X_DIR, 6 * JOY_X_DIR);
     }
 
     void moveBall(Vector newPos) {
@@ -436,12 +431,7 @@ Gamefield gamefield(
   20,  // pad width
   4,   // pad height
   10,   // num rows,
-  10,  // num cols,
-  CS_PIN,
-  DC_PIN,
-  RST_PIN,
-  JOY_X_PIN,
-  JOY_Y_PIN);
+  10);
   
 void setup() {
   gamefield.drawInitial();
