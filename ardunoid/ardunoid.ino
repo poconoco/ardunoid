@@ -19,6 +19,16 @@
 
 #define SPEAKER_PIN 8
 
+#define SCREEN_ROTATION 0
+
+#define BRICK_COLS 9
+#define BRICK_ROWS 8
+#define BRICK_NUM (BRICK_COLS * BRICK_ROWS)
+#define BRICK_GAP 2
+#define BRICK_TOP_MARGIN 15
+#define BRICK_SIDE_MARGIN 15
+#define STATUS_LINE_HEIGHT 10
+
 class ExtendedTFT: public TFT {
   public:
     ExtendedTFT(uint8_t CS, uint8_t RS, uint8_t RST)
@@ -31,12 +41,12 @@ class ExtendedTFT: public TFT {
                uint16_t stroke, 
                uint16_t bg) {
 
-      int r2 = r * r + 1;
-      int dx = x1 - x0;
-      int dy = y1 - y0;
+      int8_t r2 = r * r + 1;
+      int8_t dx = x1 - x0;
+      int8_t dy = y1 - y0;
       // Clean prev circle, except new
-      for (int y = -r; y <= r; y++) {
-        for (int x = -r; x <= r; x++) {
+      for (int8_t y = -r; y <= r; y++) {
+        for (int8_t x = -r; x <= r; x++) {
           if (x*x + y*y > r2)
             continue;  // Outside of old circle
 
@@ -51,21 +61,21 @@ class ExtendedTFT: public TFT {
       drawCircle(x1, y1, r, stroke);      
     }
 
-  moveRoundRect(int16_t x0, int16_t y0, 
-                int16_t x1, int16_t y1,
-                int16_t w, int16_t h,
-                int16_t r,
+  moveRoundRect(int x0, int y0, 
+                int x1, int y1,
+                int8_t w, int8_t h,
+                int8_t r,
                 uint16_t fill, 
                 uint16_t stroke, 
                 uint16_t bg) {
       int xRedrawX;
       int xRedrawY;
-      int xRedrawWidth;
-      int xRedrawHeight;
+      int8_t xRedrawWidth;
+      int8_t xRedrawHeight;
       int yRedrawX;
       int yRedrawY;
-      int yRedrawWidth;
-      int yRedrawHeight;
+      int8_t yRedrawWidth;
+      int8_t yRedrawHeight;
       if (x1 > x0) {
         xRedrawX = x0;
         xRedrawWidth = x1 - x0 + r;
@@ -142,48 +152,47 @@ struct Brick {
 
 class Gamefield {
   public:
-    Gamefield(int width,
-              int height,
-              int topMargin,
-              int leftMargin,
-              int gap,
-              int brickWidth,
-              int ballRadius,
-              int padWidth,
-              int padHeight,
-              int numRows,
-              int numCols)
-      : _width(width)
-      , _height(height)
-      , _brickWidth(brickWidth)
-      , _brickHeight(brickWidth / 2)
-      , _ballRadius(ballRadius)
-      , _padWidth(padWidth)
-      , _padHeight(padHeight)
-      , _padHalfWidth(padWidth/2)
-      , _padHalfHeight(padHeight/2)
-      , _ballPos(width/2, height*2/3)
-      , _padPos(width/2, height - padHeight * 1.2)
-      , _prevPadPos(width/2, height - padHeight * 1.2)
-      , _ballSpeed(1, -2)
-      , _screen(CS_PIN, DC_PIN, RST_PIN)
-      , _numBricks(numRows*numCols)
-      , _numCols(numCols)
-      , _numRows(numRows)
+    Gamefield()
+      : _screen(CS_PIN, DC_PIN, RST_PIN)
     {
+      _screen.begin();
+      _screen.setRotation(SCREEN_ROTATION);
 
       _bgColor = _screen.newColor(0, 0, 0);
       _strokeColor = _screen.newColor(255, 255, 255);
       _ballColor = _screen.newColor(0, 0, 255);
       _padColor = _screen.newColor(255, 255, 0);
 
-      _bricks = new Brick[_numBricks];
+      _width = _screen.width();
+      _height = _screen.height();
       
-      for (int row = 0; row < numRows; row++) {
-        for (int col = 0; col < numCols; col++) {
-          int brickIndex = row*numCols + col;
-          _bricks[brickIndex].center.x = leftMargin + (col * (_brickWidth + gap)) + _brickWidth / 2;
-          _bricks[brickIndex].center.y = topMargin + (row * (_brickHeight + gap)) + _brickHeight / 2;
+      _brickWidth = (_width - (BRICK_SIDE_MARGIN*2) - (BRICK_GAP*(BRICK_COLS - 1)) ) / BRICK_COLS;
+      _brickHeight = _brickWidth / 2 + 1;
+      _ballRadius = _brickWidth / 3;
+
+      _padHalfWidth = _brickHeight * 3;
+      _padHalfHeight = 2;
+
+
+      _ballPos.x = _width/2;
+      _ballPos.y = _height*2/3;
+
+      _padPos.x = _width/2;
+      _padPos.y = _height - _padHalfHeight * 2.4;
+      _prevPadPos = _padPos;
+      _ballSpeed.x = 1;
+      _ballSpeed.y = -2;
+      
+      _points = 0;
+      _pads = 3;
+
+      _bricks = new Brick[BRICK_NUM];
+      
+      for (uint8_t row = 0; row < BRICK_ROWS; row++) {
+        for (uint8_t col = 0; col < BRICK_COLS; col++) {
+          uint8_t brickIndex = row * BRICK_COLS + col;
+          _bricks[brickIndex].center.x = BRICK_SIDE_MARGIN + (col * (_brickWidth + BRICK_GAP)) + _brickWidth / 2;
+          _bricks[brickIndex].center.y = STATUS_LINE_HEIGHT + BRICK_TOP_MARGIN + (row * (_brickHeight + BRICK_GAP)) + _brickHeight / 2;
         }
       }
     }
@@ -193,11 +202,10 @@ class Gamefield {
     }
 
     void drawInitial() {
-      _screen.begin();
-      _screen.setRotation(0);
-      
       _screen.background(_bgColor);
       _screen.stroke(_strokeColor);
+
+      _screen.line(0, STATUS_LINE_HEIGHT, _width, STATUS_LINE_HEIGHT);
 
       _screen.fill(_ballColor);
       _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
@@ -212,9 +220,9 @@ class Gamefield {
         _screen.newColor(0, 255, 0)
       };
 
-      for (int i = 0; i < _numBricks; i++) {
+      for (uint8_t i = 0; i < BRICK_NUM; i++) {
         Brick &brick = _bricks[i];
-        _screen.fill(brickColors[(i / _numCols) % 5]);
+        _screen.fill(brickColors[(i / BRICK_COLS) % 5]);
         _screen.rect(brick.center.x - _brickWidth / 2, 
                      brick.center.y - _brickHeight / 2, 
                      _brickWidth, _brickHeight);
@@ -224,8 +232,8 @@ class Gamefield {
     void drawPad() {
       _screen.moveRoundRect(_prevPadPos.x-_padHalfWidth, _prevPadPos.y-_padHalfHeight, 
                             _padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, 
-                            _padWidth, _padHeight,
-                            _padHeight / 2,
+                            _padHalfWidth * 2, _padHalfHeight * 2,
+                            _padHalfHeight,
                             _padColor,
                             _strokeColor,
                             _bgColor);      
@@ -243,13 +251,13 @@ class Gamefield {
         tone(SPEAKER_PIN, 300, 10);
       }
 
-      if (potentialBallPos.y - _ballRadius <= 0) {
+      if (potentialBallPos.y - _ballRadius <= STATUS_LINE_HEIGHT) {
         _ballSpeed.y = -_ballSpeed.y;
         tone(SPEAKER_PIN, 300, 10);
       }
 
       // Then brick collisions
-      for (int i = 0; i < _numBricks; i++) {
+      for (int i = 0; i < BRICK_NUM; i++) {
         if (checkBrickCollision(_bricks[i], potentialBallPos))
           tone(SPEAKER_PIN, 500, 10);
       }
@@ -398,46 +406,31 @@ class Gamefield {
     Vector _padPos;
     Vector _padSpeed;
     Vector _prevPadPos;
-    int _width;
-    int _height;
-    const int _brickWidth;
-    const int _brickHeight;
-    int _ballRadius;
-    int _padWidth;
-    int _padHeight;
-    int _padHalfWidth;
-    int _padHalfHeight;
-    int _numBricks;
-    int _numRows;
-    int _numCols;
+    uint8_t _width;
+    uint8_t _height;
+    uint8_t _brickWidth;
+    uint8_t _brickHeight;
+    uint8_t _ballRadius;
+    uint8_t _padHalfWidth;
+    uint8_t _padHalfHeight;
     uint16_t _bgColor;
     uint16_t _strokeColor;
     uint16_t _ballColor;
     uint16_t _padColor;
     ExtendedTFT _screen;
-    int _joyXPin;
-    int _joyYPin;
+    uint32_t _points;
+    uint8_t _pads;
 };
 
 
-Gamefield gamefield(
-  128, // gamefield width
-  160, // gamefield height
-  5,   // top margin,
-  5,   // left margin,
-  2,   // gap,
-  10,   // brick radius,
-  3,   // ball radius,
-  20,  // pad width
-  4,   // pad height
-  10,   // num rows,
-  10);
-  
+Gamefield *gamefield;
+
 void setup() {
-  gamefield.drawInitial();
+  gamefield = new Gamefield();
+  gamefield->drawInitial();
 }
 
 void loop() {
-  gamefield.tick();
+  gamefield->tick();
   delay(10);
 }
