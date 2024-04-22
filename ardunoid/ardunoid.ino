@@ -28,93 +28,10 @@
 #define BRICK_TOP_MARGIN 15
 #define BRICK_SIDE_MARGIN 15
 #define STATUS_LINE_HEIGHT 10
-
-class ExtendedTFT: public TFT {
-  public:
-    ExtendedTFT(uint8_t CS, uint8_t RS, uint8_t RST)
-      : TFT(CS, RS, RST) {}
-  
-    moveCircle(int16_t x0, int16_t y0, 
-               int16_t x1, int16_t y1, 
-               int16_t r, 
-               uint16_t fill, 
-               uint16_t stroke, 
-               uint16_t bg) {
-
-      int8_t r2 = r * r + 1;
-      int8_t dx = x1 - x0;
-      int8_t dy = y1 - y0;
-      // Clean prev circle, except new
-      for (int8_t y = -r; y <= r; y++) {
-        for (int8_t x = -r; x <= r; x++) {
-          if (x*x + y*y > r2)
-            continue;  // Outside of old circle
-
-          if ((x-dx)*(x-dx) + (y-dy)*(y-dy) <= r2)
-            continue;  // Inside new circle
-
-          drawPixel(x0+x, y0+y, bg);
-        }
-      }
-
-      fillCircle(x1, y1, r, fill);
-      drawCircle(x1, y1, r, stroke);      
-    }
-
-  moveRoundRect(int x0, int y0, 
-                int x1, int y1,
-                int8_t w, int8_t h,
-                int8_t r,
-                uint16_t fill, 
-                uint16_t stroke, 
-                uint16_t bg) {
-      int xRedrawX;
-      int xRedrawY;
-      int8_t xRedrawWidth;
-      int8_t xRedrawHeight;
-      int yRedrawX;
-      int yRedrawY;
-      int8_t yRedrawWidth;
-      int8_t yRedrawHeight;
-      if (x1 > x0) {
-        xRedrawX = x0;
-        xRedrawWidth = x1 - x0 + r;
-        yRedrawX = x0;
-        yRedrawWidth = w;
-      } else {
-        xRedrawX = x1 + w - r;
-        xRedrawWidth = x0 - x1 + r;
-        yRedrawX = x0;
-        yRedrawWidth = w;
-      }
-
-      if (y1 > y0) {
-        xRedrawY = y0;
-        xRedrawHeight = h - (y1 - y0);
-        yRedrawY = y1 - h - r;
-        yRedrawHeight = y1 - y0 + r;
-      } else {
-        xRedrawY = y1;
-        xRedrawHeight = h - (y0 - y1);
-        yRedrawY = y0;
-        yRedrawHeight = y0 - y1 + r;
-      }
-
-      xRedrawWidth = min(xRedrawWidth, w);
-      xRedrawHeight = min(xRedrawHeight, h);
-      yRedrawWidth = min(yRedrawWidth, w);
-      yRedrawHeight = min(yRedrawHeight, h);
-
-      if (x0 != x1 && xRedrawWidth > 0 && xRedrawHeight > 0)
-        fillRect(xRedrawX, xRedrawY, xRedrawWidth, xRedrawHeight, bg);
-
-      if (y0 != y1 && yRedrawWidth > 0 && yRedrawHeight > 0)
-        fillRect(yRedrawX, yRedrawY, yRedrawWidth, yRedrawHeight, bg);
-
-      fillRoundRect(x1, y1, w, h, r, fill);
-      drawRoundRect(x1, y1, w, h, r, stroke);
-  }
-};
+#define MAX_BALLS 3
+#define BASE_FONT_WIDTH 6  // By the TFT library for font text size = 1, to use for positioning
+#define STATS_RIGHT_MARGIN 100
+#define TITLES_Y 100
 
 struct Vector {
   public:
@@ -142,10 +59,6 @@ struct Vector {
 };
 
 struct Brick {
-  Brick()
-    : popped(false)
-  {}
-
   Vector center;
   bool popped;
 };
@@ -156,12 +69,13 @@ class Gamefield {
       : _screen(CS_PIN, DC_PIN, RST_PIN)
     {
       _screen.begin();
+      _screen.initR(INITR_BLACKTAB);
       _screen.setRotation(SCREEN_ROTATION);
 
       _bgColor = _screen.newColor(0, 0, 0);
       _strokeColor = _screen.newColor(255, 255, 255);
-      _ballColor = _screen.newColor(0, 0, 255);
-      _padColor = _screen.newColor(255, 255, 0);
+      _ballColor = _screen.newColor(255, 255, 0);
+      _padColor = _screen.newColor(0, 0, 255);
 
       _width = _screen.width();
       _height = _screen.height();
@@ -172,19 +86,10 @@ class Gamefield {
 
       _padHalfWidth = _brickHeight * 3;
       _padHalfHeight = 2;
-
-
-      _ballPos.x = _width/2;
-      _ballPos.y = _height*2/3;
-
-      _padPos.x = _width/2;
-      _padPos.y = _height - _padHalfHeight * 2.4;
-      _prevPadPos = _padPos;
-      _ballSpeed.x = 1;
-      _ballSpeed.y = -2;
       
-      _points = 0;
-      _pads = 3;
+      _level = 1;
+      _score = 0;
+      _balls = MAX_BALLS;
 
       _bricks = new Brick[BRICK_NUM];
       
@@ -201,47 +106,124 @@ class Gamefield {
       delete _bricks;
     }
 
-    void drawInitial() {
+    void startLevel() {
+      _ballPos.x = _width/2;
+      _ballPos.y = _height*2/3;
+
+      _padPos.x = _width/2;
+      _padPos.y = _height - _padHalfHeight * 2.4;
+      _prevPadPos = _padPos;
+      _ballSpeed.x = 1;
+      _ballSpeed.y = -2;
+      _poppedBricks = 0;
+
       _screen.background(_bgColor);
       _screen.stroke(_strokeColor);
+      _screen.setTextSize(1);
 
       _screen.line(0, STATUS_LINE_HEIGHT, _width, STATUS_LINE_HEIGHT);
 
-      _screen.fill(_ballColor);
-      _screen.circle(_ballPos.x, _ballPos.y, _ballRadius);
-
       drawPad();
+      drawStatsBalls();
+      drawStatsLabels();
+      drawStatsLevel();
+      drawStatsScore();
 
       uint16_t brickColors[] = {
-        _screen.newColor(255, 0, 0),
+        _screen.newColor(0, 100, 255),
+        _screen.newColor(255, 100, 0),
         _screen.newColor(255, 255, 0),
-        _screen.newColor(0, 255, 255),
-        _screen.newColor(255, 0, 255),
+        _screen.newColor(255, 0, 100),
         _screen.newColor(0, 255, 0)
       };
 
       for (uint8_t i = 0; i < BRICK_NUM; i++) {
         Brick &brick = _bricks[i];
-        _screen.fill(brickColors[(i / BRICK_COLS) % 5]);
-        _screen.rect(brick.center.x - _brickWidth / 2, 
-                     brick.center.y - _brickHeight / 2, 
-                     _brickWidth, _brickHeight);
+        brick.popped = false;
+        const uint8_t x = brick.center.x - _brickWidth / 2;
+        const uint8_t y = brick.center.y - _brickHeight / 2;
+        _screen.fillRect(x, y, 
+                         _brickWidth, _brickHeight,
+                         _strokeColor);
+        _screen.fillRect(x + 1, y + 1, 
+                         _brickWidth - 2, _brickHeight - 2,
+                         brickColors[(i / BRICK_COLS) % 5]);
       }
     }
 
+    void nextLevel() {
+      _level++;
+      startLevel();
+      const char title[] = "LEVEL XX";
+      if (_level <= 99)
+        itoa(_level, title + 6, 10);
+
+      drawLargeTitle(title);
+      delay(1000);
+
+      // Draw over the level label
+      const uint8_t textWidth = strlen(title) * TITLES_Y * 2;
+      _screen.fillRect((_width - textWidth) / 2, TITLES_Y, textWidth, 20, _bgColor);
+    }
+
+    void drawStatsLabels() {
+      const uint8_t x = _width - STATS_RIGHT_MARGIN;
+      _screen.text("LVL", x, 2);
+    }
+
+    void drawStatsLevel() {
+      const uint8_t x = _width - STATS_RIGHT_MARGIN + (BASE_FONT_WIDTH * 3);
+      const char buff[3] = "XX";
+      if (_level <= 99)
+        itoa(_level, buff, 10);
+
+      _screen.fillRect(x, 2, BASE_FONT_WIDTH * 2, 7, _bgColor);
+      _screen.text(buff, x, 2);
+    }
+
+    void drawStatsScore() {
+      const char buff[10] = "XXXXXXXXX";
+      if (_score <= 999999999)
+        itoa(_score, buff, 10);
+
+      const uint8_t numDigits = strlen(buff);
+      const uint8_t x = _width - (BASE_FONT_WIDTH * numDigits);
+      _screen.fillRect(x, 2, BASE_FONT_WIDTH * numDigits, 7, _bgColor);
+      _screen.text(buff, x, 2);
+    }
+
+    void drawStatsBalls() {
+      for (uint8_t i = 0; i < MAX_BALLS; i++)
+        _screen.fillCircle(_ballRadius + 2 + i * (_ballRadius * 2 + 2), 
+                           STATUS_LINE_HEIGHT / 2, 
+                           _ballRadius, 
+                           i < _balls ? _ballColor : _bgColor);  // clear or draw
+    }
+
     void drawPad() {
-      _screen.moveRoundRect(_prevPadPos.x-_padHalfWidth, _prevPadPos.y-_padHalfHeight, 
-                            _padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, 
-                            _padHalfWidth * 2, _padHalfHeight * 2,
-                            _padHalfHeight,
-                            _padColor,
-                            _strokeColor,
-                            _bgColor);      
+      if (_prevPadPos.x != _padPos.x || _prevPadPos.y != _padPos.y)
+        // Clear old
+        _screen.fillRect(_prevPadPos.x - _padHalfWidth, _prevPadPos.y - _padHalfHeight, 
+                         _padHalfWidth * 2, _padHalfHeight * 2,
+                         _bgColor);
+
+      // Draw new
+      _screen.fillRect(_padPos.x - _padHalfWidth+1, _padPos.y - _padHalfHeight + 1, 
+                       _padHalfWidth * 2 - 2, _padHalfHeight * 2 - 2, 
+                       _padColor);
+      _screen.drawRoundRect(_padPos.x-_padHalfWidth, _padPos.y-_padHalfHeight, 
+                            _padHalfWidth * 2, _padHalfHeight * 2, 
+                            _padHalfHeight, _strokeColor);
 
       _prevPadPos = _padPos;
     }
 
     void tick() {
+      if (_balls < 0) {
+        // Game over
+        return;
+      }
+
       Vector potentialBallPos = _ballPos + _ballSpeed;
       readPadSpeed();
 
@@ -258,8 +240,10 @@ class Gamefield {
 
       // Then brick collisions
       for (int i = 0; i < BRICK_NUM; i++) {
-        if (checkBrickCollision(_bricks[i], potentialBallPos))
+        if (checkBrickCollision(_bricks[i], potentialBallPos)) {
           tone(SPEAKER_PIN, 500, 10);
+          break; // Collide with one brick at a time
+        }
       }
 
       // Then pad collision
@@ -268,8 +252,13 @@ class Gamefield {
 
       // Check ball flew out of the bottom
       if (potentialBallPos.y - _ballRadius >= _height) {
-        // TODO: decrement pads, wait for click
         ballOut();
+        return;
+      }
+
+      if (_poppedBricks == BRICK_NUM) {
+        nextLevel();
+        return;
       }
 
       moveBall(_ballPos + _ballSpeed);
@@ -282,13 +271,13 @@ class Gamefield {
     }
 
     void moveBall(Vector newPos) {
-      // But actually move ball using new speed after collision
-      Vector oldBallPos = _ballPos;
-      _ballPos = newPos;  
-      _screen.moveCircle(oldBallPos.x, oldBallPos.y, 
-                         _ballPos.x, _ballPos.y, 
-                         _ballRadius, _ballColor, _strokeColor, _bgColor);
+      // Clear prev
+      _screen.fillRect(_ballPos.x - _ballRadius, _ballPos.y - _ballRadius, _ballRadius * 2 + 1, _ballRadius * 2 + 1, _bgColor);
 
+      // Draw new
+      _screen.fillCircle(newPos.x, newPos.y, _ballRadius, _ballColor);
+
+      _ballPos = newPos;
     }
 
     void movePad(Vector newPos) {
@@ -315,7 +304,9 @@ class Gamefield {
         // Determine collision side
         if (abs(relBallX) > abs(relBallY)) {
           // Left or right collision
-          _ballSpeed.x = -_ballSpeed.x;
+          _ballSpeed.x = min(relBallX / 3, 2);
+          if (abs(relBallY) > _brickHeight)
+            _ballSpeed.y = -_ballSpeed.y;
         } else 
         {
           // Top or Bottom collision
@@ -380,13 +371,14 @@ class Gamefield {
 
     void popBrick(Brick &brick) {
       // Draw background
-      _screen.stroke(_bgColor);
-      _screen.fill(_bgColor);
-      _screen.rect(brick.center.x - _brickWidth / 2, 
-                   brick.center.y - _brickHeight / 2, 
-                   _brickWidth, _brickHeight);
+      _screen.fillRect(brick.center.x - _brickWidth / 2, 
+                       brick.center.y - _brickHeight / 2, 
+                       _brickWidth, _brickHeight, _bgColor);
       // Mark popped
       brick.popped = true;
+      _score += 10;
+      drawStatsScore();
+      _poppedBricks++;
     }
 
     void ballOut() {
@@ -395,8 +387,34 @@ class Gamefield {
       tone(SPEAKER_PIN, 200, 200);
       delay(200);
 
+      _balls -= 1;
+
+      if (_balls < 0) {
+        gameOver();
+        return;
+      }
+
       _ballSpeed = Vector(0, -2);
       moveBall(Vector(_width/2, _height*2/3));
+      drawStatsBalls();
+    }
+
+    void drawLargeTitle(const char *title) {
+      const uint8_t textWidth = strlen(title) * BASE_FONT_WIDTH * 2;
+
+      _screen.setTextSize(2);
+      _screen.text(title, (_width-textWidth)/2, TITLES_Y);
+      _screen.setTextSize(1);
+    }
+
+    void gameOver() {
+      drawLargeTitle("GAME OVER");
+      const char scoreBuff[10] = "XXXXXXXXX";
+      if (_score <= 999999999)
+        itoa(_score, scoreBuff, 10);
+
+      _screen.text("SCORE", (_width-(BASE_FONT_WIDTH * 5))/2, TITLES_Y + 22);
+      _screen.text(scoreBuff, (_width-(BASE_FONT_WIDTH * strlen(scoreBuff)))/2, TITLES_Y + 22 + 10);
     }
   
   private:
@@ -417,9 +435,11 @@ class Gamefield {
     uint16_t _strokeColor;
     uint16_t _ballColor;
     uint16_t _padColor;
-    ExtendedTFT _screen;
-    uint32_t _points;
-    uint8_t _pads;
+    TFT _screen;
+    uint16_t _level;
+    uint32_t _score;
+    int8_t _balls;
+    int8_t _poppedBricks;
 };
 
 
@@ -427,7 +447,7 @@ Gamefield *gamefield;
 
 void setup() {
   gamefield = new Gamefield();
-  gamefield->drawInitial();
+  gamefield->startLevel();
 }
 
 void loop() {
