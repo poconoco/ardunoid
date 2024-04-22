@@ -15,6 +15,7 @@
 #define JOY_X_PIN 0
 #define JOY_Y_PIN 1
 #define JOY_X_DIR -1  // 1 or -1
+#define JOY_X_TRIM -3;
 
 #define SPEAKER_PIN 8
 
@@ -94,10 +95,6 @@ class Gamefield {
       _brickHalfHeight = _brickHeight / 2;
 
       _ballRadius = _brickWidth / 3;
-
-      _padHalfWidth = _brickHeight * 3;
-      _padHalfHeight = 2;
-      
       _bricks = new Brick[BRICK_NUM];
       
       for (uint8_t row = 0; row < BRICK_ROWS; row++) {
@@ -118,6 +115,11 @@ class Gamefield {
     void startLevel() {
       _poppedBricks = 0;
       _bulletFired = false; // No bullet
+
+      // Resetting pad size here, because pad gets shrinked when progressing through levels
+      _padHalfWidth = _brickHeight * 3;
+      _padHalfWidth = max(_padHalfWidth / 3, _padHalfWidth - (_level - 1) * 3);
+      _padHalfHeight = _brickHalfHeight;
 
       _screen.background(_bgColor);
       _screen.stroke(_strokeColor);
@@ -225,7 +227,9 @@ class Gamefield {
       delay(200);
       tone(SPEAKER_PIN, 600, 200);
       delay(200);
+
       _level++;
+
       startLevel();
     }
 
@@ -323,13 +327,25 @@ class Gamefield {
     }
 
     void readPadSpeed() {
-        int joyX = analogRead(JOY_X_PIN);
-        _padSpeed.x = map(joyX, 0, 1023, -5 * JOY_X_DIR, 6 * JOY_X_DIR);
+        int joyX0 = analogRead(JOY_X_PIN);
+
+        // Map to more friendly way to apply power
+        int joyX = map(joyX0, 0, 1023, -100, 100) + JOY_X_TRIM;
+
+        // Make square curve (-10000..10000)
+        if (joyX > 0)
+          joyX = joyX * joyX * JOY_X_DIR;
+        else
+          joyX = - joyX * joyX * JOY_X_DIR;
+
+
+        _padSpeed.x = map(joyX, -10000, 10000, -4, 4);
     }
 
     void moveBall(uint16_t newX, uint16_t newY) {
       // Clear prev
-      drawBall(_ballPos.x, _ballPos.y, _bgColor);
+      _screen.fillRect(_ballPos.x - _ballRadius, _ballPos.y - _ballRadius, 
+                       _ballRadius * 2 + 1, _ballRadius * 2 + 1, _bgColor);
 
       // Draw new
       drawBall(newX, newY, _ballColor);
