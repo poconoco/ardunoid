@@ -115,10 +115,12 @@ class Gamefield {
     void startLevel() {
       _poppedBricks = 0;
       _bulletFired = false; // No bullet
+      _padSpeed.x = 0;
+      _padSpeed.y = 0;
 
       // Resetting pad size here, because pad gets shrinked when progressing through levels
       _padHalfWidth = _brickHeight * 3;
-      _padHalfWidth = max(_padHalfWidth / 3, _padHalfWidth - (_level - 1) * 3);
+      _padHalfWidth = max(_padHalfWidth / 4, _padHalfWidth - (_level - 1) * 2);
       _padHalfHeight = _brickHalfHeight;
 
       _screen.background(_bgColor);
@@ -126,9 +128,8 @@ class Gamefield {
       _screen.setTextSize(1);
 
       resetBall();
+
       movePad(_width / 2, _height - _padHalfHeight * 2.4, true);
-      _padSpeed.x = 0;
-      _padSpeed.y = 0;
 
       _screen.fillRect(0, STATUS_LINE_HEIGHT, _width, 1, _strokeColor);
 
@@ -414,7 +415,7 @@ class Gamefield {
         // Determine collision side
         if (abs(relBallX) > abs(relBallY)) {
           // Left or right collision
-          _ballSpeed.x = min(relBallX / 3, 2);
+          _ballSpeed.x = relBallX > 0 ? 1 : -1;
           if (abs(relBallY) > _brickHeight)
             _ballSpeed.y = -_ballSpeed.y;
         } else 
@@ -512,7 +513,7 @@ class Gamefield {
     }
 
     void resetBall() {
-      _ballSpeed = Vector(0, -2);
+      _ballSpeed = Vector(0, -1);
 
       // Clear prev
       drawBall(_ballPos.x, _ballPos.y, _bgColor);
