@@ -24,34 +24,61 @@
 
 #define SCREEN_ROTATION 0
 
+#define MAX_BALLS 3
 #define BRICK_COLS 9
 #define BRICK_ROWS 8
 #define BRICK_NUM (BRICK_COLS * BRICK_ROWS)
-#define BRICK_GAP 2
-#define BRICK_TOP_MARGIN 15
-#define BRICK_SIDE_MARGIN 15
-#define STATUS_LINE_HEIGHT 10
-#define MAX_BALLS 3
-#define BULLET_LENGTH 5
-#define BULLET_SPEED 5;
+
+// Below macro constants are for scaling geometry calculations versus rendering.
+// We need it to do geometry math in integers, but have decent accuracy, so use
+#define SCALE 8
+#define SCALE_BITS 3
+
+// Geometry constants
+#define BRICK_GAP (2 << SCALE_BITS)
+#define BRICK_TOP_MARGIN (15 << SCALE_BITS)
+#define BRICK_SIDE_MARGIN (15 << SCALE_BITS)
+#define STATUS_LINE_HEIGHT (10 << SCALE_BITS)
+#define STATS_RIGHT_MARGIN (100 << SCALE_BITS)
+#define STATS_BALL_GAP (2 << SCALE_BITS)
+#define BULLET_LENGTH (5 << SCALE_BITS)
+#define BULLET_SPEED (5 << SCALE_BITS)
+#define PAD_SHRINK_PER_LEVEL (2 << SCALE_BITS)
+
+// Non-geometry UI constants
 #define BASE_FONT_WIDTH 6  // By the TFT library for font text size = 1, to use for positioning
-#define STATS_RIGHT_MARGIN 100
 #define TITLE_Y 100
 #define SUBTITLE_Y 122
 
 #define RGB565(r, g, b) ((r << 11) | (g << 5) | b)
 
+#define BG_COLOR RGB565(0, 0, 0)
+#define BALL_COLOR RGB565(255, 255, 0)
+#define PAD_COLOR RGB565(0, 0, 255)
+#define STROKE_COLOR RGB565(255, 255, 255)
+
+static const uint16_t BRICK_COLORS[] = {
+  RGB565(0, 100, 255),
+  RGB565(180, 180, 0),
+  RGB565(255, 0, 255),
+  RGB565(0, 180, 0)
+};
+
+uint16_t textWidth(const char *text, uint8_t size) {
+  return strlen(text) * BASE_FONT_WIDTH * size;
+}
+
 struct Vector {
   public:
     Vector() {}
     
-    Vector(const int _x, const int _y) 
+    Vector(const int16_t _x, const int16_t _y) 
       : x(_x)
       , y(_y)
     {}
 
     Vector operator + (const Vector &operand) {
-      return Vector(x+operand.x, y+operand.y);
+      return Vector(x + operand.x, y + operand.y);
     }
 
     void operator += (const Vector &operand) {
@@ -59,8 +86,8 @@ struct Vector {
       y = y + operand.y;
     }
 
-    int x;
-    int y;
+    int16_t x;
+    int16_t y;
 };
 
 struct Brick {
@@ -80,13 +107,9 @@ class Gamefield {
       _screen.initR(INITR_BLACKTAB);
       _screen.setRotation(SCREEN_ROTATION);
 
-      _bgColor = RGB565(0, 0, 0);
-      _strokeColor = RGB565(255, 255, 255);
-      _ballColor = RGB565(255, 255, 0);
-      _padColor = RGB565(0, 0, 255);
-
-      _width = _screen.width();
-      _height = _screen.height();
+      _realWidth = _screen.width();
+      _width = _realWidth << SCALE_BITS;
+      _height = _screen.height() << SCALE_BITS;
       
       _brickWidth = (_width - (BRICK_SIDE_MARGIN*2) - (BRICK_GAP*(BRICK_COLS - 1)) ) / BRICK_COLS;
       _brickHalfWidth = _brickWidth / 2;
@@ -120,42 +143,34 @@ class Gamefield {
 
       // Resetting pad size here, because pad gets shrinked when progressing through levels
       _padHalfWidth = _brickHeight * 3;
-      _padHalfWidth = max(_padHalfWidth / 4, _padHalfWidth - (_level - 1) * 2);
+      _padHalfWidth = max(_padHalfWidth / 4, _padHalfWidth - (_level - 1) * PAD_SHRINK_PER_LEVEL);
       _padHalfHeight = _brickHalfHeight;
 
-      _screen.background(_bgColor);
-      _screen.stroke(_strokeColor);
+      _screen.background(BG_COLOR);
+      _screen.stroke(STROKE_COLOR);
       _screen.setTextSize(1);
 
       resetBall();
 
-      movePad(_width / 2, _height - _padHalfHeight * 2.4, true);
+      _padPos.y = _height - _padHalfHeight * 2.4;
+      movePad(_width / 2, true);
 
-      _screen.fillRect(0, STATUS_LINE_HEIGHT, _width, 1, _strokeColor);
+      _screen.fillRect(0, STATUS_LINE_HEIGHT >> SCALE_BITS, _realWidth, 1, STROKE_COLOR);
 
-      _screen.text("LVL", _width - STATS_RIGHT_MARGIN, 2);
+      _screen.text("LVL", (_width - STATS_RIGHT_MARGIN) >> SCALE_BITS, 2);
       drawStatsBalls();
       drawStatsLevel();
       drawStatsScore();
 
-      uint16_t brickColors[] = {
-        RGB565(0, 100, 255),
-        RGB565(180, 180, 0),
-        RGB565(255, 0, 255),
-        RGB565(0, 180, 0)
-      };
-
       for (uint8_t i = 0; i < BRICK_NUM; i++) {
         Brick &brick = _bricks[i];
         brick.popped = false;
-        const uint8_t x = brick.center.x - _brickHalfWidth;
-        const uint8_t y = brick.center.y - _brickHalfHeight;
-        _screen.fillRect(x, y, 
-                         _brickWidth, _brickHeight,
-                         _strokeColor);
-        _screen.fillRect(x + 1, y + 1, 
-                         _brickWidth - 2, _brickHeight - 2,
-                         brickColors[(i / BRICK_COLS) % 4]);
+        const uint16_t x = (brick.center.x - _brickHalfWidth) >> SCALE_BITS;
+        const uint16_t y = (brick.center.y - _brickHalfHeight) >> SCALE_BITS;
+        const uint8_t w = _brickWidth >> SCALE_BITS;
+        const uint8_t h = _brickHeight >> SCALE_BITS;
+        _screen.fillRect(x, y, w, h, STROKE_COLOR);
+        _screen.fillRect(x + 1, y + 1, w - 2, h - 2, BRICK_COLORS[(i / BRICK_COLS) % 4]);
       }
 
       const char title[] = "LEVEL XX";
@@ -198,20 +213,20 @@ class Gamefield {
     }
 
     void drawBullet(uint16_t color) {
-        _screen.fillRect(_bulletPos.x, _bulletPos.y, 1, BULLET_LENGTH, color);
+        _screen.fillRect(_bulletPos.x >> SCALE_BITS, _bulletPos.y >> SCALE_BITS, 1, BULLET_LENGTH >> SCALE_BITS, color);
     }
 
     void moveBullet() {
       if (_bulletFired) {
         // Clear prev
-        drawBullet(_bgColor);
+        drawBullet(BG_COLOR);
 
         _bulletPos.y -= BULLET_SPEED;
         
         if (_bulletPos.y <= STATUS_LINE_HEIGHT)
           _bulletFired = false;
         else
-          drawBullet(_strokeColor);  // Draw new
+          drawBullet(STROKE_COLOR);  // Draw new
       } else {
         if (digitalRead(BTN_B_PIN) == HIGH)
           return;  // Not pressed
@@ -235,12 +250,12 @@ class Gamefield {
     }
 
     void drawStatsLevel() {
-      const uint8_t x = _width - STATS_RIGHT_MARGIN + (BASE_FONT_WIDTH * 3);
+      const uint16_t x = ((_width - STATS_RIGHT_MARGIN) >> SCALE_BITS) + (BASE_FONT_WIDTH * 3);
       const char buff[3] = "XX";
       if (_level <= 99)
         itoa(_level, buff, 10);
 
-      _screen.fillRect(x, 2, BASE_FONT_WIDTH * 2, 7, _bgColor);
+      _screen.fillRect(x, 2, BASE_FONT_WIDTH * 2, 7, BG_COLOR);
       _screen.text(buff, x, 2);
     }
 
@@ -250,20 +265,20 @@ class Gamefield {
         itoa(_score, buff, 10);
 
       const uint8_t textW = textWidth(buff, 1);
-      const uint8_t x = _width - textW;
-      _screen.fillRect(x, 2, textW, 7, _bgColor);
+      const uint16_t x = _realWidth - textW;
+      _screen.fillRect(x, 2, textW, 7, BG_COLOR);
       _screen.text(buff, x, 2);
     }
 
-    void drawBall(uint8_t x, uint8_t y, uint16_t color) {
-        _screen.fillCircle(x, y, _ballRadius, color);
+    void drawBall(uint16_t x, uint16_t y, uint16_t color) {
+        _screen.fillCircle(x >> SCALE_BITS, y >> SCALE_BITS, _ballRadius >> SCALE_BITS, color);
     }
 
     void drawStatsBalls() {
       for (uint8_t i = 0; i < MAX_BALLS; i++)
-        drawBall(_ballRadius + 2 + i * (_ballRadius * 2 + 2), 
-                 STATUS_LINE_HEIGHT / 2, 
-                 i < _balls ? _ballColor : _bgColor);  // clear or draw
+        drawBall(_ballRadius + i * (_ballRadius * 2 + STATS_BALL_GAP) + STATS_BALL_GAP,
+                 STATUS_LINE_HEIGHT / 2,
+                 i < _balls ? BALL_COLOR : BG_COLOR);  // clear or draw
     }
 
     void tick() {
@@ -281,7 +296,7 @@ class Gamefield {
         tone(SPEAKER_PIN, 300, 10);
       }
 
-      if (potentialBallPos.y - _ballRadius <= STATUS_LINE_HEIGHT) {
+      if (potentialBallPos.y - _ballRadius <= STATUS_LINE_HEIGHT + (1 << SCALE_BITS)) {
         _ballSpeed.y = -_ballSpeed.y;
         tone(SPEAKER_PIN, 300, 10);
       }
@@ -300,7 +315,7 @@ class Gamefield {
           tone(SPEAKER_PIN, 500, 20);
 
           // Clear bullet
-          drawBullet(_bgColor);
+          drawBullet(BG_COLOR);
           _bulletFired = false;
         }
       }
@@ -321,7 +336,7 @@ class Gamefield {
       }
 
       moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
-      movePad(_padPos.x + _padSpeed.x, _padPos.y + _padSpeed.y, false);
+      movePad(_padPos.x + _padSpeed.x, false);
       moveBullet();
 
       checkPause();
@@ -340,46 +355,49 @@ class Gamefield {
           joyX = - joyX * joyX * JOY_X_DIR;
 
 
-        _padSpeed.x = map(joyX, -10000, 10000, -4, 4);
+        _padSpeed.x = map(joyX, -10000, 10000, (-4 << SCALE_BITS), (4 << SCALE_BITS));
     }
 
     void moveBall(uint16_t newX, uint16_t newY) {
       // Clear prev
-      _screen.fillRect(_ballPos.x - _ballRadius, _ballPos.y - _ballRadius, 
-                       _ballRadius * 2 + 1, _ballRadius * 2 + 1, _bgColor);
+      _screen.fillRect((_ballPos.x - _ballRadius) >> SCALE_BITS,
+                       (_ballPos.y - _ballRadius) >> SCALE_BITS,
+                       ((_ballRadius * 2) >> SCALE_BITS) + 1, ((_ballRadius * 2) >> SCALE_BITS) + 1, BG_COLOR);
 
       // Draw new
-      drawBall(newX, newY, _ballColor);
+      drawBall(newX, newY, BALL_COLOR);
 
       _ballPos.x = newX;
       _ballPos.y = newY;
     }
 
-    void movePad(uint16_t newX, uint16_t newY, bool forceRedraw) {
+    void movePad(uint16_t newX, bool forceRedraw) {
       if (newX < _padHalfWidth)
         newX = _padHalfWidth;
         
       if (newX + _padHalfWidth >= _width)
-        newX = _width - _padHalfWidth - 1;
+        newX = _width - _padHalfWidth - (1 << SCALE_BITS);
 
-      if (! forceRedraw && newX == _padPos.x && newY == _padPos.y)
+      if (! forceRedraw && newX == _padPos.x)
         return;
 
-      // Clear old
-      _screen.fillRect(_padPos.x - _padHalfWidth, _padPos.y - _padHalfHeight, 
-                       _padHalfWidth * 2, _padHalfHeight * 2,
-                       _bgColor);
+      uint16_t x = (_padPos.x - _padHalfWidth) >> SCALE_BITS;
+      uint16_t y = (_padPos.y - _padHalfHeight) >> SCALE_BITS;
+      uint16_t w = (_padHalfWidth * 2) >> SCALE_BITS;
+      uint16_t h = (_padHalfHeight * 2) >> SCALE_BITS;
 
+      // Clear old
+      _screen.fillRect(x, y, w, h, BG_COLOR);
+
+      // Update X
       _padPos.x = newX;
-      _padPos.y = newY;
+      x = (_padPos.x - _padHalfWidth) >> SCALE_BITS;
 
       // Draw new
-      _screen.fillRect(_padPos.x - _padHalfWidth + 1, _padPos.y - _padHalfHeight + 1, 
-                       _padHalfWidth * 2 - 2, _padHalfHeight * 2 - 2, 
-                       _padColor);
-      _screen.drawRoundRect(_padPos.x - _padHalfWidth, _padPos.y - _padHalfHeight, 
-                            _padHalfWidth * 2, _padHalfHeight * 2, 
-                            _padHalfHeight, _strokeColor);
+      _screen.fillRect(x + 1, y + 1, w - 2, h - 2, PAD_COLOR);
+      _screen.drawRoundRect(x, y, w, h,
+                            _padHalfHeight >> SCALE_BITS,
+                            STROKE_COLOR);
     }
 
     bool checkBrickBulletCollision(Brick &brick) {
@@ -444,7 +462,7 @@ class Gamefield {
         return false;
 
       // To allow more area for side collision
-      const uint8_t smallerHalfWidth = _padHalfWidth - 3;
+      const int16_t smallerHalfWidth = _padHalfWidth - (3 << SCALE_BITS);
 
       // Top pad section
       if (ballPos.x >= _padPos.x - smallerHalfWidth &&
@@ -460,7 +478,7 @@ class Gamefield {
       if (ballPos.x < _padPos.x-smallerHalfWidth &&
           ballPos.x + _ballRadius >= _padPos.x - _padHalfWidth) {
 
-        _ballSpeed.x = -1;
+        _ballSpeed.x = (-1 << SCALE_BITS);
         _ballSpeed.y = - _ballSpeed.y;
 
         return true;
@@ -470,7 +488,7 @@ class Gamefield {
       if (ballPos.x > _padPos.x+smallerHalfWidth &&
           ballPos.x - _ballRadius <= _padPos.x + _padHalfWidth) {
 
-        _ballSpeed.x = 1;
+        _ballSpeed.x = (1 << SCALE_BITS);
         _ballSpeed.y = - _ballSpeed.y;
 
         return true;
@@ -479,9 +497,10 @@ class Gamefield {
 
     void popBrick(Brick &brick) {
       // Draw background
-      _screen.fillRect(brick.center.x - _brickHalfWidth, 
-                       brick.center.y - _brickHalfHeight, 
-                       _brickWidth, _brickHeight, _bgColor);
+      _screen.fillRect((brick.center.x - _brickHalfWidth) >> SCALE_BITS, 
+                       (brick.center.y - _brickHalfHeight) >> SCALE_BITS, 
+                       _brickWidth >> SCALE_BITS, _brickHeight >> SCALE_BITS, BG_COLOR);
+
       // Mark popped
       brick.popped = true;
       _score += 10;
@@ -513,38 +532,33 @@ class Gamefield {
     }
 
     void resetBall() {
-      _ballSpeed = Vector(0, -1);
+      _ballSpeed = Vector((1 << SCALE_BITS) / 2, -1 << SCALE_BITS);
 
       // Clear prev
-      drawBall(_ballPos.x, _ballPos.y, _bgColor);
+      drawBall(_ballPos.x, _ballPos.y, BG_COLOR);
       _ballPos.x = _width / 2;
       _ballPos.y = _height * 2 / 3;
     }
 
-    uint8_t textWidth(const char *text, uint8_t size) {
-      return strlen(text) * BASE_FONT_WIDTH * size;
-    }
-
     void drawLargeTitle(const char *title) {
       _screen.setTextSize(2);
-      _screen.text(title, (_width - textWidth(title, 2)) / 2, TITLE_Y);
+      _screen.text(title, (_realWidth - textWidth(title, 2)) / 2, TITLE_Y);
       _screen.setTextSize(1);
     }
 
     void drawSubtitle(const char* subtitle) {
-      _screen.text(subtitle, (_width - textWidth(subtitle, 1)) / 2, SUBTITLE_Y);
+      _screen.text(subtitle, (_realWidth - textWidth(subtitle, 1)) / 2, SUBTITLE_Y);
     }
 
     void clearTitles() {
       // Draw over the level label
-      _screen.fillRect(0, TITLE_Y, _width, 40, _bgColor);
+      _screen.fillRect(0, TITLE_Y, _realWidth, 40, BG_COLOR);
     }
 
     void gameOver() {
       drawLargeTitle("GAME OVER");
-      const char scoreBuff[8] = "SCORE XXXXXXX";
-      if (_score <= 9999999)
-        itoa(_score, scoreBuff+6, 10);
+      const char scoreBuff[] = "SCORE XXXXX";
+      itoa(_score, scoreBuff+6, 10);
 
       drawSubtitle(scoreBuff);
 
@@ -564,26 +578,22 @@ class Gamefield {
     Vector _padSpeed;
     Vector _bulletPos;
     bool _bulletFired;
-    uint8_t _width;
-    uint8_t _height;
-    uint8_t _brickWidth;
-    uint8_t _brickHeight;
-    uint8_t _brickHalfWidth;
-    uint8_t _brickHalfHeight;
-    uint8_t _ballRadius;
-    uint8_t _padHalfWidth;
-    uint8_t _padHalfHeight;
-    uint16_t _bgColor;
-    uint16_t _strokeColor;
-    uint16_t _ballColor;
-    uint16_t _padColor;
+    int16_t _width;
+    int16_t _height;
+    int16_t _realWidth;  // In real pixels, without scaling up with SCALE_BITS
+    int16_t _brickWidth;
+    int16_t _brickHeight;
+    int16_t _brickHalfWidth;
+    int16_t _brickHalfHeight;
+    int16_t _ballRadius;
+    int16_t _padHalfWidth;
+    int16_t _padHalfHeight;
     TFT _screen;
-    uint16_t _level;
-    uint32_t _score;
+    uint8_t _level;
+    uint16_t _score;
     int8_t _balls;
-    int8_t _poppedBricks;
+    uint8_t _poppedBricks;
 };
-
 
 void setup() {
   Gamefield gamefield;
@@ -601,7 +611,4 @@ void setup() {
 
     prevTick = currTick;
   }
-}
-
-void loop() {
 }
