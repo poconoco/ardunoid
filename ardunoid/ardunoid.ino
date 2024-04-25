@@ -267,6 +267,9 @@ class Gamefield {
 
     void drawBall(int x, int y, int color) {
         _screen.fillCircle(x >> SCALE_BITS, y >> SCALE_BITS, _ballRadius >> SCALE_BITS, color);
+
+        if (color != BG_COLOR)
+          _screen.fillCircle((x >> SCALE_BITS) - 1, (y >> SCALE_BITS) + 1, (_ballRadius >> SCALE_BITS) - 2, RGB565(100, 70, 0));
     }
 
     void drawStatsBalls() {
@@ -550,7 +553,7 @@ class Gamefield {
     }
 
     void resetBall() {
-      _ballSpeed = Vector((1 << SCALE_BITS) / 2, -1 << SCALE_BITS);
+      _ballSpeed = Vector((1 << SCALE_BITS) / 2, -3 << (SCALE_BITS - 1));
 
       // Clear prev
       drawBall(_ballPos.x, _ballPos.y, BG_COLOR);
@@ -618,8 +621,8 @@ void setup() {
   unsigned long prevTick = 0;
   unsigned long currTick = 0;
   while (true) {
-    currTick = millis();
     gamefield.tick();
+    currTick = millis();
 
     // Make tick rate consistent even if tick takes different time to calculate
     if (currTick - prevTick < 20)
