@@ -61,14 +61,14 @@
 #define STROKE_COLOR RGB565(255, 255, 255)
 #define BULLET_COLOR RGB565(255, 100, 50)
 
-const uint16_t BRICK_COLORS[] = {
+const int BRICK_COLORS[] = {
   RGB565(0, 70, 255),
   RGB565(255, 255, 0),
   RGB565(255, 130, 0),
   RGB565(0, 180, 0)
 };
 
-uint16_t textWidth(const char *text, uint8_t size) {
+int textWidth(const char *text, uint8_t size) {
   return strlen(text) * BASE_FONT_WIDTH * size;
 }
 
@@ -76,7 +76,7 @@ struct Vector {
   public:
     Vector() {}
     
-    Vector(const int16_t _x, const int16_t _y) 
+    Vector(const int _x, const int _y) 
       : x(_x)
       , y(_y)
     {}
@@ -90,8 +90,8 @@ struct Vector {
       y = y + operand.y;
     }
 
-    int16_t x;
-    int16_t y;
+    int x;
+    int y;
 };
 
 struct Brick {
@@ -166,17 +166,16 @@ class Gamefield {
 
       for (uint8_t i = 0; i < BRICK_NUM; i++) {
         _bricks[i].popped = false;
-        const uint16_t x = (_bricks[i].center.x - _brickHalfWidth) >> SCALE_BITS;
-        const uint16_t y = (_bricks[i].center.y - _brickHalfHeight) >> SCALE_BITS;
-        const uint8_t w = _brickHalfWidth >> (SCALE_BITS - 1);
-        const uint8_t h = _brickHalfHeight >> (SCALE_BITS - 1);
+        const int x = (_bricks[i].center.x - _brickHalfWidth) >> SCALE_BITS;
+        const int y = (_bricks[i].center.y - _brickHalfHeight) >> SCALE_BITS;
+        const int w = _brickHalfWidth >> (SCALE_BITS - 1);
+        const int h = _brickHalfHeight >> (SCALE_BITS - 1);
         _screen.fillRect(x, y, w, h, STROKE_COLOR);
         _screen.fillRect(x + 1, y + 1, w - 2, h - 2, BRICK_COLORS[(i / BRICK_COLS) % 4]);
       }
 
-      const char title[] = "LEVEL XX";
-      if (_level <= 99)
-        itoa(_level, title + 6, 10);
+      const char title[9] = "LEVEL XX";
+      itoa(_level, title + 6, 10);
 
       drawLargeTitle(title);
       drawSubtitle("press A to start");
@@ -213,7 +212,7 @@ class Gamefield {
       clearTitles();
     }
 
-    void drawBullet(uint16_t color) {
+    void drawBullet(int color) {
         _screen.fillRect(_bulletPos.x >> SCALE_BITS, _bulletPos.y >> SCALE_BITS, 1, BULLET_LENGTH >> SCALE_BITS, color);
     }
 
@@ -228,10 +227,7 @@ class Gamefield {
           _bulletFired = false;
         else
           drawBullet(BULLET_COLOR);  // Draw new
-      } else {
-        if (digitalRead(BTN_B_PIN) == HIGH)
-          return;  // Not pressed
-
+      } else if (digitalRead(BTN_B_PIN) == LOW) {
         // Firing Bullet
         _bulletFired = true;
         _bulletPos.x = _padPos.x;
@@ -251,27 +247,25 @@ class Gamefield {
     }
 
     void drawStatsLevel() {
-      const uint16_t x = ((_width - STATS_RIGHT_MARGIN) >> SCALE_BITS) + (BASE_FONT_WIDTH * 3);
-      const char buff[3] = "XX";
-      if (_level <= 99)
-        itoa(_level, buff, 10);
+      const int x = ((_width - STATS_RIGHT_MARGIN) >> SCALE_BITS) + (BASE_FONT_WIDTH * 3);
+      const char buff[3];
+      itoa(_level, buff, 10);
 
       _screen.fillRect(x, 2, BASE_FONT_WIDTH * 2, 7, BG_COLOR);
       _screen.text(buff, x, 2);
     }
 
     void drawStatsScore() {
-      const char buff[8] = "XXXXXXX";
-      if (_score <= 9999999)
-        itoa(_score, buff, 10);
+      const char buff[6];
+      itoa(_score, buff, 10);
 
-      const uint8_t textW = textWidth(buff, 1);
-      const uint16_t x = _realWidth - textW;
+      const int textW = textWidth(buff, 1);
+      const int x = _realWidth - textW;
       _screen.fillRect(x, 2, textW, 7, BG_COLOR);
       _screen.text(buff, x, 2);
     }
 
-    void drawBall(uint16_t x, uint16_t y, uint16_t color) {
+    void drawBall(int x, int y, int color) {
         _screen.fillCircle(x >> SCALE_BITS, y >> SCALE_BITS, _ballRadius >> SCALE_BITS, color);
     }
 
@@ -366,7 +360,7 @@ class Gamefield {
         _padSpeed.x = (_padSpeed.x * 9 + joyX * 1) / 10;
     }
 
-    void moveBall(uint16_t newX, uint16_t newY) {
+    void moveBall(int newX, int newY) {
       // Clear prev
       _screen.fillRect((_ballPos.x - _ballRadius) >> SCALE_BITS,
                        (_ballPos.y - _ballRadius) >> SCALE_BITS,
@@ -379,7 +373,7 @@ class Gamefield {
       _ballPos.y = newY;
     }
 
-    void movePad(uint16_t newX, bool forceRedraw) {
+    void movePad(int newX, bool forceRedraw) {
       if (newX < _padHalfWidth) {
         newX = _padHalfWidth;
         _padSpeed.x = 0;
@@ -393,13 +387,18 @@ class Gamefield {
       if (! forceRedraw && newX == _padPos.x)
         return;
 
-      uint16_t x = (_padPos.x - _padHalfWidth) >> SCALE_BITS;
-      uint16_t y = (_padPos.y - _padHalfHeight) >> SCALE_BITS;
-      uint16_t w = (_padHalfWidth * 2) >> SCALE_BITS;
-      uint16_t h = (_padHalfHeight * 2) >> SCALE_BITS;
+      int x = (_padPos.x - _padHalfWidth) >> SCALE_BITS;
+      int y = (_padPos.y - _padHalfHeight) >> SCALE_BITS;
+      int w = (_padHalfWidth * 2) >> SCALE_BITS;
+      int h = (_padHalfHeight * 2) >> SCALE_BITS;
+      int dx = (abs(_padPos.x - newX) + _padHalfHeight) >> SCALE_BITS;
 
       // Clear old
-      _screen.fillRect(x, y, w, h, BG_COLOR);
+      if (newX > _padPos.x) 
+        _screen.fillRect(x, y, dx, h, BG_COLOR);
+      else
+        _screen.fillRect(x + w - dx, y, dx, h, BG_COLOR);
+
 
       // Update X
       _padPos.x = newX;
@@ -472,7 +471,7 @@ class Gamefield {
         return false;
 
       // To allow more area for side collision
-      const int16_t smallerHalfWidth = _padHalfWidth - (3 << SCALE_BITS);
+      const int smallerHalfWidth = _padHalfWidth - (3 << SCALE_BITS);
 
       // Top pad section
       if (ballPos.x >= _padPos.x - smallerHalfWidth &&
@@ -597,17 +596,17 @@ class Gamefield {
     Vector _padSpeed;
     Vector _bulletPos;
     bool _bulletFired;
-    int16_t _width;
-    int16_t _height;
-    int16_t _realWidth;  // In real pixels, without scaling up with SCALE_BITS
-    int16_t _brickHalfWidth;
-    int16_t _brickHalfHeight;
-    int16_t _ballRadius;
-    int16_t _padHalfWidth;
-    int16_t _padHalfHeight;
+    int _width;
+    int _height;
+    int _realWidth;  // In real pixels, without scaling up with SCALE_BITS
+    int _brickHalfWidth;
+    int _brickHalfHeight;
+    int _ballRadius;
+    int _padHalfWidth;
+    int _padHalfHeight;
     TFT _screen;
     uint8_t _level;
-    uint16_t _score;
+    int _score;
     int8_t _balls;
     uint8_t _poppedBricks;
 };
