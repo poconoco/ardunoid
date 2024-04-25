@@ -59,6 +59,7 @@
 #define BALL_COLOR RGB565(255, 255, 0)
 #define PAD_COLOR RGB565(80, 80, 255)
 #define STROKE_COLOR RGB565(255, 255, 255)
+#define BULLET_COLOR RGB565(255, 100, 50)
 
 const uint16_t BRICK_COLORS[] = {
   RGB565(0, 70, 255),
@@ -226,7 +227,7 @@ class Gamefield {
         if (_bulletPos.y <= STATS_LINE_HEIGHT + 1)
           _bulletFired = false;
         else
-          drawBullet(STROKE_COLOR);  // Draw new
+          drawBullet(BULLET_COLOR);  // Draw new
       } else {
         if (digitalRead(BTN_B_PIN) == HIGH)
           return;  // Not pressed
@@ -288,14 +289,14 @@ class Gamefield {
       }
 
       Vector potentialBallPos(_ballPos + _ballSpeed);
-      readPadSpeed();
 
-      // Calculate walls collisions first
+      // Calculate left and right walls collisions first
       if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0)) {
         _ballSpeed.x = -_ballSpeed.x;
         tone(SPEAKER_PIN, 300, 10);
       }
 
+      // Then top wall collision
       if (potentialBallPos.y - _ballRadius <= STATS_LINE_HEIGHT + (1 << SCALE_BITS)) {
         _ballSpeed.y = -_ballSpeed.y;
         tone(SPEAKER_PIN, 300, 10);
@@ -335,6 +336,8 @@ class Gamefield {
         nextLevel();
         return;
       }
+
+      readPadSpeed();
 
       moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
       // Force pad redraw if ball is low enough to overlap with the pad 
@@ -377,11 +380,15 @@ class Gamefield {
     }
 
     void movePad(uint16_t newX, bool forceRedraw) {
-      if (newX < _padHalfWidth)
+      if (newX < _padHalfWidth) {
         newX = _padHalfWidth;
+        _padSpeed.x = 0;
+      }
         
-      if (newX + _padHalfWidth >= _width)
+      if (newX + _padHalfWidth >= _width) {
         newX = _width - _padHalfWidth;
+        _padSpeed.x = 0;
+      }
 
       if (! forceRedraw && newX == _padPos.x)
         return;
