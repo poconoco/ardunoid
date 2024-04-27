@@ -19,8 +19,8 @@
 
 #define SPEAKER_PIN 8
 
-#define BTN_A_PIN 2
-#define BTN_B_PIN 3
+#define BTN_START_PIN 2
+#define BTN_FIRE_PIN 12
 
 #define SCREEN_ROTATION 0
 
@@ -104,8 +104,8 @@ class Gamefield {
     Gamefield()
       : _screen(CS_PIN, DC_PIN, RST_PIN)
     {
-      pinMode(BTN_A_PIN, INPUT_PULLUP);
-      pinMode(BTN_B_PIN, INPUT_PULLUP);
+      pinMode(BTN_START_PIN, INPUT_PULLUP);
+      pinMode(BTN_FIRE_PIN, INPUT_PULLUP);
 
       _screen.begin();
       _screen.initR(INITR_BLACKTAB);
@@ -179,28 +179,28 @@ class Gamefield {
 
       drawLargeTitle(title);
       drawSubtitle("press A to start");
-      waitForBtnA();
+      waitForStartBtn();
 
       clearTitles();
     }
 
-    void waitForBtnA() {
+    void waitForStartBtn() {
       // Wait till button pressed
-      while (digitalRead(BTN_A_PIN) == HIGH) {};
+      while (digitalRead(BTN_START_PIN) == HIGH) {};
       delay(50);
 
       // Wait till button will be released
-      while (digitalRead(BTN_A_PIN) == LOW) {};
+      while (digitalRead(BTN_START_PIN) == LOW) {};
       delay(50);
     }
 
     void checkPause() {
       // If not pressed, do nothing
-      if (digitalRead(BTN_A_PIN) == HIGH)
+      if (digitalRead(BTN_START_PIN) == HIGH)
         return;
 
       // Wait till button will be released
-      while (digitalRead(BTN_A_PIN) == LOW) {};
+      while (digitalRead(BTN_START_PIN) == LOW) {};
       delay(50);
 
       // User engaged pause
@@ -208,7 +208,7 @@ class Gamefield {
       drawLargeTitle("PAUSE");
       drawSubtitle("press A");
 
-      waitForBtnA();
+      waitForStartBtn();
       clearTitles();
     }
 
@@ -227,7 +227,7 @@ class Gamefield {
           _bulletFired = false;
         else
           drawBullet(BULLET_COLOR);  // Draw new
-      } else if (digitalRead(BTN_B_PIN) == LOW) {
+      } else if (digitalRead(BTN_FIRE_PIN) == LOW) {
         // Firing Bullet
         _bulletFired = true;
         _bulletPos.x = _padPos.x;
@@ -586,7 +586,7 @@ class Gamefield {
       tone(SPEAKER_PIN, 120, 500);
       delay(500);
 
-      waitForBtnA();
+      waitForStartBtn();
       resetGame();
       startLevel();
     }
