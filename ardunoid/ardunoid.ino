@@ -178,7 +178,7 @@ class Gamefield {
       itoa(_level, title + 6, 10);
 
       drawLargeTitle(title);
-      drawSubtitle("press A to start");
+      drawSubtitle("press start");
       waitForStartBtn();
 
       clearTitles();
@@ -206,7 +206,7 @@ class Gamefield {
       // User engaged pause
       delay(50);
       drawLargeTitle("PAUSE");
-      drawSubtitle("press A");
+      drawSubtitle("press start");
 
       waitForStartBtn();
       clearTitles();
