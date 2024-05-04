@@ -15,7 +15,7 @@
 #define JOY_X_PIN 0
 #define JOY_Y_PIN 1
 #define JOY_X_DIR -1  // 1 or -1
-#define JOY_X_TRIM -3;  // Applied when joy input scaled to -100..+100
+#define JOY_X_TRIM -10  // Applied to raw reading which is 0..1023
 
 #define SPEAKER_PIN 8
 
@@ -340,21 +340,13 @@ class Gamefield {
     }
 
     void readPadSpeed() {
-        int joyX0 = analogRead(JOY_X_PIN);
+        int joyX = analogRead(JOY_X_PIN) + JOY_X_TRIM;
 
         // Map to -100..100 to allow applying square power
-        int joyX = map(joyX0, 0, 1023, -100, 100) + JOY_X_TRIM;
-
-        // Make square curve (-10000..10000)
-        if (joyX > 0)
-          joyX = joyX * joyX * JOY_X_DIR;
-        else
-          joyX = - joyX * joyX * JOY_X_DIR;
-
-        // Map to our geometry scale
-        joyX = map(joyX, -10000, 10000, -MAX_PAD_SPEED, MAX_PAD_SPEED);
+        joyX = map(joyX, 0, 1023, -MAX_PAD_SPEED, MAX_PAD_SPEED) * JOY_X_DIR;
         
-        // Add some inertia
+        // Add some inertia by mixing prev and new speed value as 90%/10%
+        // (this ratio combined with framerate controls how much inertia there is)
         _padSpeed.x = (_padSpeed.x * 9 + joyX * 1) / 10;
     }
 
