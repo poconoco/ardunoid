@@ -46,7 +46,7 @@
 #define BULLET_LENGTH (5 << SCALE_BITS)
 #define BULLET_SPEED (5 << SCALE_BITS)
 #define PAD_SHRINK_PER_LEVEL (1 << SCALE_BITS)  // Shrink by 1px from each side for each level
-#define MAX_PAD_SPEED (5 << SCALE_BITS)
+#define MAX_PAD_SPEED (6 << SCALE_BITS)
 
 // Non-geometry UI constants
 #define BASE_FONT_WIDTH 6  // By the TFT library for font text size = 1, to use for positioning
@@ -144,9 +144,7 @@ class Gamefield {
       _padSpeed.y = 0;
 
       // Resetting pad size here, because pad gets shrinked when progressing through levels
-      _padHalfWidth = _brickHalfHeight * 2 * 4;
-      _padHalfWidth = max(_brickHalfWidth * 3 / 2, _padHalfWidth - (_level - 1) * PAD_SHRINK_PER_LEVEL);
-      _padHalfHeight = _brickHalfHeight;
+      _padHalfWidth = max(_brickHalfWidth * 3 / 2, (_brickHalfHeight * 8) - (_level - 1) * PAD_SHRINK_PER_LEVEL);
 
       _screen.background(BG_COLOR);
       _screen.stroke(STROKE_COLOR);
@@ -154,7 +152,7 @@ class Gamefield {
 
       resetBall();
 
-      _padPos.y = _height - _padHalfHeight * 2.4;
+      _padPos.y = _height - _brickHalfHeight - 2;
       movePad(_width / 2, true);
 
       _screen.fillRect(0, STATS_LINE_HEIGHT >> SCALE_BITS, _realWidth, 1, STROKE_COLOR);
@@ -223,7 +221,7 @@ class Gamefield {
 
         _bulletPos.y -= BULLET_SPEED;
         
-        if (_bulletPos.y <= STATS_LINE_HEIGHT + 1)
+        if (_bulletPos.y <= STATS_LINE_HEIGHT + BULLET_LENGTH)
           _bulletFired = false;
         else
           drawBullet(BULLET_COLOR);  // Draw new
@@ -231,7 +229,7 @@ class Gamefield {
         // Firing Bullet
         _bulletFired = true;
         _bulletPos.x = _padPos.x;
-        _bulletPos.y = _padPos.y - _padHalfHeight - BULLET_LENGTH;
+        _bulletPos.y = _padPos.y - _brickHalfHeight - BULLET_LENGTH;
       }
     }
 
@@ -267,9 +265,6 @@ class Gamefield {
 
     void drawBall(int x, int y, int color) {
         _screen.fillCircle(x >> SCALE_BITS, y >> SCALE_BITS, _ballRadius >> SCALE_BITS, color);
-
-        if (color != BG_COLOR)
-          _screen.fillCircle((x >> SCALE_BITS) - 1, (y >> SCALE_BITS) + 1, (_ballRadius >> SCALE_BITS) - 2, RGB565(100, 70, 0));
     }
 
     void drawStatsBalls() {
@@ -338,7 +333,7 @@ class Gamefield {
 
       moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
       // Force pad redraw if ball is low enough to overlap with the pad 
-      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius >= _padPos.y - _padHalfHeight);
+      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius >= _padPos.y - _brickHalfHeight);
       moveBullet();
 
       checkPause();
@@ -364,10 +359,27 @@ class Gamefield {
     }
 
     void moveBall(int newX, int newY) {
-      // Clear prev
-      _screen.fillRect((_ballPos.x - _ballRadius) >> SCALE_BITS,
-                       (_ballPos.y - _ballRadius) >> SCALE_BITS,
-                       ((_ballRadius * 2) >> SCALE_BITS) + 1, ((_ballRadius * 2) >> SCALE_BITS) + 1, BG_COLOR);
+
+
+      // Clean prev but only when there will be no new
+      int oldX = _ballPos.x >> SCALE_BITS;
+      int oldY = _ballPos.y >> SCALE_BITS;
+      int r = _ballRadius >> SCALE_BITS;
+      int r2 = r * r;
+      int dx = (newX >> SCALE_BITS) - oldX;
+      int dy = (newY >> SCALE_BITS) - oldY;
+      // Clean prev circle, except new
+      for (int y = -r; y <= r; y++) {
+        for (int x = -r; x <= r; x++) {
+          if (x*x + y*y > r2 + 1)
+            continue;  // Outside of old circle
+
+          if ((x-dx)*(x-dx) + (y-dy)*(y-dy) <= r2)
+            continue;  // Inside new circle
+
+          _screen.drawPixel(oldX + x, oldY + y, BG_COLOR);
+        }
+      }
 
       // Draw new
       drawBall(newX, newY, BALL_COLOR);
@@ -391,10 +403,10 @@ class Gamefield {
         return;
 
       int x = (_padPos.x - _padHalfWidth) >> SCALE_BITS;
-      int y = (_padPos.y - _padHalfHeight) >> SCALE_BITS;
-      int w = (_padHalfWidth * 2) >> SCALE_BITS;
-      int h = (_padHalfHeight * 2) >> SCALE_BITS;
-      int dx = (abs(_padPos.x - newX) + _padHalfHeight) >> SCALE_BITS;
+      int y = (_padPos.y - _brickHalfHeight) >> SCALE_BITS;
+      int w = _padHalfWidth >> (SCALE_BITS - 1);
+      int h = _brickHalfHeight >> (SCALE_BITS - 1);
+      int dx = (abs(_padPos.x - newX) + _brickHalfHeight) >> SCALE_BITS;
 
       // Clear old
       if (newX > _padPos.x) 
@@ -410,7 +422,7 @@ class Gamefield {
       // Draw new
       _screen.fillRect(x + 1, y + 1, w - 2, h - 2, PAD_COLOR);
       _screen.drawRoundRect(x, y, w, h,
-                            _padHalfHeight >> SCALE_BITS,
+                            _brickHalfHeight >> SCALE_BITS,
                             STROKE_COLOR);
     }
 
@@ -466,7 +478,7 @@ class Gamefield {
         return false;
 
       // Higher than touching a pad
-      if (ballPos.y + _ballRadius < _padPos.y - _padHalfHeight)
+      if (ballPos.y + _ballRadius < _padPos.y - _brickHalfHeight)
         return false;
       
       // Too low to pick up
@@ -606,7 +618,6 @@ class Gamefield {
     int _brickHalfHeight;
     int _ballRadius;
     int _padHalfWidth;
-    int _padHalfHeight;
     TFT _screen;
     uint8_t _level;
     int _score;
