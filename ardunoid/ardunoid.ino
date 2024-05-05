@@ -5,6 +5,7 @@
 
 #include <TFT.h>  
 #include <SPI.h>
+#include <EEPROM.h>
 
 // TFT Screen pins
 #define CS_PIN   6
@@ -50,6 +51,7 @@
 
 // Non-geometry UI constants
 #define BASE_FONT_WIDTH 6  // By the TFT library for font text size = 1, to use for positioning
+#define BASE_FONT_HEIGHT 12  // Including lines distane
 #define TITLE_Y 100
 #define SUBTITLE_Y 122
 
@@ -351,8 +353,6 @@ class Gamefield {
     }
 
     void moveBall(int newX, int newY) {
-
-
       // Clean prev but only when there will be no new
       int oldX = _ballPos.x >> SCALE_BITS;
       int oldY = _ballPos.y >> SCALE_BITS;
@@ -405,7 +405,6 @@ class Gamefield {
         _screen.fillRect(x, y, dx, h, BG_COLOR);
       else
         _screen.fillRect(x + w - dx, y, dx, h, BG_COLOR);
-
 
       // Update X
       _padPos.x = newX;
@@ -554,6 +553,9 @@ class Gamefield {
       _level = 1;
       _score = 0;
       _balls = MAX_BALLS;
+
+      // Uncomment to reset highscore
+      // EEPROM.put(0, _score);
     }
 
     void resetBall() {
@@ -571,8 +573,8 @@ class Gamefield {
       _screen.setTextSize(1);
     }
 
-    void drawSubtitle(const char* subtitle) {
-      _screen.text(subtitle, (_realWidth - textWidth(subtitle, 1)) / 2, SUBTITLE_Y);
+    void drawSubtitle(const char* subtitle, int line = 0) {
+      _screen.text(subtitle, (_realWidth - textWidth(subtitle, 1)) / 2, SUBTITLE_Y + line * BASE_FONT_HEIGHT);
     }
 
     void clearTitles() {
@@ -581,11 +583,22 @@ class Gamefield {
     }
 
     void gameOver() {
+      uint16_t highscore;
+      EEPROM.get(0, highscore);
+      if (_score > highscore) {
+        highscore = _score;
+        EEPROM.put(0, highscore);
+      }
+
+
       drawLargeTitle("GAME OVER");
       const char scoreBuff[] = "SCORE XXXXX";
-      itoa(_score, scoreBuff+6, 10);
+      const char highscoreBuff[] = "HIGH SCORE XXXXX";
+      utoa(_score, scoreBuff+6, 10);
+      utoa(highscore, highscoreBuff+11, 10);
 
       drawSubtitle(scoreBuff);
+      drawSubtitle(highscoreBuff, 1);
 
       tone(SPEAKER_PIN, 120, 500);
       delay(500);
@@ -612,7 +625,7 @@ class Gamefield {
     int _padHalfWidth;
     TFT _screen;
     uint8_t _level;
-    int _score;
+    uint16_t _score;
     int8_t _balls;
     uint8_t _poppedBricks;
 };
