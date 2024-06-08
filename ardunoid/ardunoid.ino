@@ -51,7 +51,8 @@
 
 // Non-geometry UI constants
 #define BASE_FONT_WIDTH 6  // By the TFT library for font text size = 1, to use for positioning
-#define BASE_FONT_HEIGHT 12  // Including lines distane
+#define BASE_FONT_HEIGHT 12  // Including distane between lines
+
 #define TITLE_Y 100
 #define SUBTITLE_Y 122
 
@@ -75,25 +76,24 @@ int textWidth(const char *text, uint8_t size) {
 }
 
 struct Vector {
-  public:
-    Vector() {}
-    
-    Vector(const int _x, const int _y) 
-      : x(_x)
-      , y(_y)
-    {}
+  Vector() {}
+  
+  Vector(const int _x, const int _y) 
+    : x(_x)
+    , y(_y)
+  {}
 
-    Vector operator + (const Vector &operand) {
-      return Vector(x + operand.x, y + operand.y);
-    }
+  Vector operator + (const Vector &operand) {
+    return Vector(x + operand.x, y + operand.y);
+  }
 
-    void operator += (const Vector &operand) {
-      x = x + operand.x;
-      y = y + operand.y;
-    }
+  void operator += (const Vector &operand) {
+    x = x + operand.x;
+    y = y + operand.y;
+  }
 
-    int x;
-    int y;
+  int x;
+  int y;
 };
 
 struct Brick {
@@ -110,10 +110,11 @@ class Gamefield {
       pinMode(BTN_FIRE_PIN, INPUT_PULLUP);
 
       _screen.begin();
-      _screen.initR(INITR_BLACKTAB);
+      _screen.initR(INITR_BLACKTAB);  // If your screen has BGR color order (instead of RGB)
       _screen.setRotation(SCREEN_ROTATION);
 
       _realWidth = _screen.width();
+
       _width = _realWidth << SCALE_BITS;
       _height = _screen.height() << SCALE_BITS;
       
@@ -131,21 +132,28 @@ class Gamefield {
           _bricks[brickIndex].center.y = STATS_LINE_HEIGHT + BRICK_TOP_MARGIN + (row * (_brickHalfHeight * 2 + BRICK_GAP)) + _brickHalfHeight;
         }
       }
-
-      resetGame();
     }
     
     ~Gamefield() {
       delete _bricks;
     }
 
+    void resetGame() {
+      _level = 1;
+      _score = 0;
+      _balls = MAX_BALLS;
+
+      // Uncomment to reset highscore
+      // EEPROM.put(0, _score);
+    }
+
     void startLevel() {
       _poppedBricks = 0;
-      _bulletFired = false; // No bullet
+      _bulletFired = false;
       _padSpeed.x = 0;
       _padSpeed.y = 0;
 
-      // Resetting pad size here, because pad gets shrinked when progressing through levels
+      // Pad gets shrinked when progressing through levels
       _padHalfWidth = max(_brickHalfWidth * 3 / 2, (_brickHalfHeight * 8) - (_level - 1) * PAD_SHRINK_PER_LEVEL);
 
       _screen.background(BG_COLOR);
@@ -157,8 +165,7 @@ class Gamefield {
       _padPos.y = _height - _brickHalfHeight - 2;
       movePad(_width / 2, true);
 
-      _screen.fillRect(0, STATS_LINE_HEIGHT >> SCALE_BITS, _realWidth, 1, STROKE_COLOR);
-
+      _screen.drawLine(0, STATS_LINE_HEIGHT >> SCALE_BITS, _realWidth, STATS_LINE_HEIGHT >> SCALE_BITS, STROKE_COLOR);
       _screen.text("LVL", (_width - STATS_RIGHT_MARGIN) >> SCALE_BITS, 2);
       drawStatsBalls();
       drawStatsLevel();
@@ -170,7 +177,7 @@ class Gamefield {
         const int y = (_bricks[i].center.y - _brickHalfHeight) >> SCALE_BITS;
         const int w = _brickHalfWidth >> (SCALE_BITS - 1);
         const int h = _brickHalfHeight >> (SCALE_BITS - 1);
-        _screen.fillRect(x, y, w, h, STROKE_COLOR);
+        _screen.drawRect(x, y, w, h, STROKE_COLOR);
         _screen.fillRect(x + 1, y + 1, w - 2, h - 2, BRICK_COLORS[(i / BRICK_COLS) % 4]);
       }
 
@@ -180,10 +187,75 @@ class Gamefield {
       drawLargeTitle(title);
       drawSubtitle("press start");
       waitForStartBtn();
-
       clearTitles();
     }
 
+    void tick() {
+      if (_balls < 0) {
+        // Game over
+        return;
+      }
+
+      Vector potentialBallPos(_ballPos + _ballSpeed);
+
+      // Calculate left and right walls collisions first
+      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0)) {
+        _ballSpeed.x = -_ballSpeed.x;
+        tone(SPEAKER_PIN, 300, 10);
+      }
+
+      // Then top wall collision
+      if (potentialBallPos.y - _ballRadius <= STATS_LINE_HEIGHT + (1 << SCALE_BITS)) {
+        _ballSpeed.y = -_ballSpeed.y;
+        tone(SPEAKER_PIN, 300, 10);
+      }
+
+      // Then brick collisions
+      bool ballPoppedBrick = false;
+      for (int i = 0; i < BRICK_NUM; i++) {
+        if (! ballPoppedBrick && checkBrickBallCollision(_bricks[i], potentialBallPos)) {
+          tone(SPEAKER_PIN, 500, 10);
+          ballPoppedBrick = true; // Collide with one brick at a time
+        }
+
+        // Bullet collisions
+        if (checkBrickBulletCollision(_bricks[i]))
+        {
+          tone(SPEAKER_PIN, 500, 20);
+
+          // Clear bullet
+          drawBullet(BG_COLOR);
+          _bulletFired = false;
+        }
+      }
+
+      // Then pad collision
+      if (checkPadCollision(potentialBallPos))
+        tone(SPEAKER_PIN, 150, 50);
+
+      // Check ball flew out of the bottom
+      if (potentialBallPos.y - _ballRadius >= _height) {
+        ballOut();
+        return;
+      }
+
+      // Check if level is completed
+      if (_poppedBricks == BRICK_NUM) {
+        nextLevel();
+        return;
+      }
+
+      readPadSpeed();
+
+      moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
+      // Force pad redraw if ball is low enough to overlap with the pad 
+      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius >= _padPos.y - _brickHalfHeight);
+      moveBullet();
+
+      checkPause();
+    }
+
+  protected:
     void waitForStartBtn() {
       // Wait till button pressed
       while (digitalRead(BTN_START_PIN) == HIGH) {};
@@ -274,71 +346,6 @@ class Gamefield {
         drawBall(STATS_BALL_GAP + _ballRadius + i * (_ballRadius * 2 + STATS_BALL_GAP),
                  STATS_LINE_HEIGHT / 2,
                  i < _balls ? BALL_COLOR : BG_COLOR);  // clear or draw
-    }
-
-    void tick() {
-      if (_balls < 0) {
-        // Game over
-        return;
-      }
-
-      Vector potentialBallPos(_ballPos + _ballSpeed);
-
-      // Calculate left and right walls collisions first
-      if ((potentialBallPos.x + _ballRadius >= _width) || (potentialBallPos.x - _ballRadius <= 0)) {
-        _ballSpeed.x = -_ballSpeed.x;
-        tone(SPEAKER_PIN, 300, 10);
-      }
-
-      // Then top wall collision
-      if (potentialBallPos.y - _ballRadius <= STATS_LINE_HEIGHT + (1 << SCALE_BITS)) {
-        _ballSpeed.y = -_ballSpeed.y;
-        tone(SPEAKER_PIN, 300, 10);
-      }
-
-      // Then brick collisions
-      bool ballPoppedBrick = false;
-      for (int i = 0; i < BRICK_NUM; i++) {
-        if (! ballPoppedBrick && checkBrickBallCollision(_bricks[i], potentialBallPos)) {
-          tone(SPEAKER_PIN, 500, 10);
-          ballPoppedBrick = true; // Collide with one brick at a time
-        }
-
-        // Bullet collisions
-        if (checkBrickBulletCollision(_bricks[i]))
-        {
-          tone(SPEAKER_PIN, 500, 20);
-
-          // Clear bullet
-          drawBullet(BG_COLOR);
-          _bulletFired = false;
-        }
-      }
-
-      // Then pad collision
-      if (checkPadCollision(potentialBallPos))
-        tone(SPEAKER_PIN, 150, 50);
-
-      // Check ball flew out of the bottom
-      if (potentialBallPos.y - _ballRadius >= _height) {
-        ballOut();
-        return;
-      }
-
-      // Check if level is completed
-      if (_poppedBricks == BRICK_NUM) {
-        nextLevel();
-        return;
-      }
-
-      readPadSpeed();
-
-      moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
-      // Force pad redraw if ball is low enough to overlap with the pad 
-      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius >= _padPos.y - _brickHalfHeight);
-      moveBullet();
-
-      checkPause();
     }
 
     void readPadSpeed() {
@@ -549,15 +556,6 @@ class Gamefield {
       drawStatsBalls();
     }
 
-    void resetGame() {
-      _level = 1;
-      _score = 0;
-      _balls = MAX_BALLS;
-
-      // Uncomment to reset highscore
-      // EEPROM.put(0, _score);
-    }
-
     void resetBall() {
       _ballSpeed = Vector((1 << SCALE_BITS) / 2, -3 << (SCALE_BITS - 1));
 
@@ -632,6 +630,7 @@ class Gamefield {
 
 void setup() {
   Gamefield gamefield;
+  gamefield.resetGame();
   gamefield.startLevel();
 
   unsigned long prevTick = 0;
