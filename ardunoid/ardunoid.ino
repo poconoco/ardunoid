@@ -209,7 +209,7 @@ class Gamefield {
         _ballSpeed.y = -_ballSpeed.y;
         tone(SPEAKER_PIN, 300, 10);
       }
-
+  
       // Then brick collisions
       bool ballPoppedBrick = false;
       for (int i = 0; i < BRICK_NUM; i++) {
@@ -276,7 +276,6 @@ class Gamefield {
       delay(50);
 
       // User engaged pause
-      delay(50);
       drawLargeTitle("PAUSE");
       drawSubtitle("press start");
 
@@ -285,7 +284,8 @@ class Gamefield {
     }
 
     void drawBullet(int color) {
-        _screen.fillRect(_bulletPos.x >> SCALE_BITS, _bulletPos.y >> SCALE_BITS, 1, BULLET_LENGTH >> SCALE_BITS, color);
+        _screen.drawLine(_bulletPos.x >> SCALE_BITS, _bulletPos.y >> SCALE_BITS,
+                         _bulletPos.x >> SCALE_BITS, (_bulletPos.y + BULLET_LENGTH) >> SCALE_BITS, color);
     }
 
     void moveBullet() {
@@ -351,7 +351,7 @@ class Gamefield {
     void readPadSpeed() {
         int joyX = analogRead(JOY_X_PIN) + JOY_X_TRIM;
 
-        // Map to -100..100 to allow applying square power
+        // Map to symmetric range around zero
         joyX = map(joyX, 0, 1023, -MAX_PAD_SPEED, MAX_PAD_SPEED) * JOY_X_DIR;
         
         // Add some inertia by mixing prev and new speed value as 90%/10%
@@ -364,16 +364,16 @@ class Gamefield {
       int oldX = _ballPos.x >> SCALE_BITS;
       int oldY = _ballPos.y >> SCALE_BITS;
       int r = _ballRadius >> SCALE_BITS;
-      int r2 = r * r;
+      int rSquare = r * r;
       int dx = (newX >> SCALE_BITS) - oldX;
       int dy = (newY >> SCALE_BITS) - oldY;
       // Clean prev circle, except new
       for (int y = -r; y <= r; y++) {
         for (int x = -r; x <= r; x++) {
-          if (x*x + y*y > r2 + 1)
+          if (x*x + y*y > rSquare + 1)
             continue;  // Outside of old circle
 
-          if ((x-dx)*(x-dx) + (y-dy)*(y-dy) <= r2)
+          if ((x-dx)*(x-dx) + (y-dy)*(y-dy) <= rSquare)
             continue;  // Inside new circle
 
           _screen.drawPixel(oldX + x, oldY + y, BG_COLOR);
