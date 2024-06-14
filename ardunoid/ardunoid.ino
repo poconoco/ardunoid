@@ -454,20 +454,17 @@ class Gamefield {
       popBrick(brick);
 
       // Determine collision side
-      if (distX > distY) {
-        // Left or right collision
-        // Confirm that the hit was on the same side of the brick the ball was moving towards
-        if ((ballPos.x < brick.center.x)  // Brick was hit at the left vs right side
-                == (_ballSpeed.x > 0))    // Equals ball moving from the levf vs right
-          _ballSpeed.x = -_ballSpeed.x;
+      if (distX > -_ballRadius && distY > -_ballRadius) {
+        // If both X and Y penetration is less than radius, then it's a corner hit
         
-        // If not too deep, then also bounce in Y
-        if (- distY < _ballRadius) {
-          // Confirm if approaching from the right direction
-          if ((ballPos.y < brick.center.y)  // brick was hit at the top vs bottom part
-                  == (_ballSpeed.y > 0))    // corresponds to ball moving down vs up
-            _ballSpeed.y = -_ballSpeed.y;
-        }
+        if ((ballPos.x > brick.center.x) == (_ballSpeed.x < 0))
+          _ballSpeed.x = -_ballSpeed.x;
+
+        if ((ballPos.y > brick.center.y) == (_ballSpeed.y < 0))
+          _ballSpeed.y = -_ballSpeed.y;
+      } else if (distX > distY) {
+        // Left or right collision
+        _ballSpeed.x = -_ballSpeed.x;
       } else 
       {
         // Top or Bottom collision
