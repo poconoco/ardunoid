@@ -249,7 +249,7 @@ class Gamefield {
 
       moveBall(_ballPos.x + _ballSpeed.x, _ballPos.y + _ballSpeed.y);
       // Force pad redraw if ball is low enough to overlap with the pad 
-      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius >= _padPos.y - _brickHalfHeight);
+      movePad(_padPos.x + _padSpeed.x, _ballPos.y + _ballRadius + (3 << SCALE_BITS) >= _padPos.y - _brickHalfHeight);
       moveBullet();
 
       checkPause();
@@ -303,7 +303,7 @@ class Gamefield {
         // Firing Bullet
         _bulletFired = true;
         _bulletPos.x = _padPos.x;
-        _bulletPos.y = _padPos.y - _brickHalfHeight - BULLET_LENGTH;
+        _bulletPos.y = _padPos.y - _brickHalfHeight - BULLET_LENGTH - (1 << SCALE_BITS);
       }
     }
 
